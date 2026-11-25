@@ -1,3 +1,6 @@
 /data/
 /weights/
 /outputs/
+/external/CVS-AdaptNet/
+__pycache__/
+.DS_Store

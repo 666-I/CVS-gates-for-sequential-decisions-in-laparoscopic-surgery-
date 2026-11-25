@@ -1,1 +1,9 @@
-# Add dependencies when the pipeline scripts are implemented.
+# Python 3.10+. On the GPU machine install the CUDA build of torch first (pytorch.org).
+# The RTX 5070 needs torch 2.7 or newer, built for CUDA 12.8 or newer.
+torch>=2.7
+torchvision>=0.22
+transformers>=4.40,<5
+numpy
+pandas
+scikit-learn
+pillow
