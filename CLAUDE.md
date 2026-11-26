@@ -81,7 +81,8 @@ src/
   00_train_resnet.py    # GPU
   00b_train_adaptnet.py # GPU
   01_predict.py         # GPU -> outputs/preds.csv
-  02_prep.py            # gains + state features
+  01b_extract_features.py # GPU -> outputs/features_v1.npz (AdaptNet embeddings for the CVS layer)
+  02_prep.py            # AdaptNet cut-offs + CVS layer + gains + state features
   03_baselines.py       # headroom check + oracle
   04_reward_model.py    # 5-fold reward model + gain distribution
   05_dp_planner.py      # value table + policy + evaluation
@@ -99,7 +100,8 @@ Everything has run on the training PC (RTX 5070, Miniconda base env, torch 2.15 
 
 ### Main setup (agreed with the group)
 - Cheap model: ResNet18 v1, cut at 0.5 (trained with BCE, so 0.5 is meaningful).
-- Expensive model: our AdaptNet v1, with per-criterion cut-offs chosen on val (see 02 below).
+- Expensive model: our AdaptNet v1, with per-criterion cut-offs chosen on val and a CVS layer trained on train (see 02 below).
+- Reward: missed-CVS penalty lambda = 3 (a false claim still costs 10). lambda = 0 is the original reward.
 - Goal: show that the decider's logic works, so the key comparison is DP planner vs no-price.
 
 ### Training (batch 64, peak 7.4 of 11.9 GB, logs in `docs/training_logs/`)
@@ -125,18 +127,24 @@ Everything has run on the training PC (RTX 5070, Miniconda base env, torch 2.15 
 - Do not choose cut-offs by the router's reward: the -10 penalty makes "never claim CVS" the best answer.
 - `--calibrate-resnet` does the same for ResNet. It sets C1 to 0.976, so ResNet almost never claims CVS and the router has nothing left to do. Not used. Worth discussing: the reward favours a model that never detects CVS.
 
+### 02 CVS layer and missed-CVS penalty
+- CVS layer: logistic regression (C = 0.3) on AdaptNet v1's image embeddings (`01b_extract_features.py`), predicting CVS directly. Fitted on the 108 fit videos; its threshold (0.388) is the best AdaptNet score on the 12 held-out train videos. Val and test are not used.
+- It ranks CVS better than AdaptNet's own scores: CVS average precision 0.39 vs 0.35 on val, 0.34 vs 0.28 on test. On val, calls now fix 9 ResNet misses and break 14 correct CVS calls (was 6 and 24).
+- Missed-CVS penalty (`CVS_LAMBDA`, default 3): answers the "never claim CVS" problem. It helps little in practice because every method still misses about 131 to 134 of test's 136 CVS frames; lambda 5 and 7 weaken the planner's advantage. All 8 combinations (lambda 0, 3, 5, 7, layer on/off) are in `docs/results/lambda_comparison.csv`.
+
 ### Results, main setup (test, mean per-video difference, 95% bootstrap CI over videos)
-| rho | DP planner - no-price | DP planner - call-on-claim |
-|---|---|---|
-| 0.05 | +1.24 [0.22, 2.48] | -0.11 [-0.34, 0.09] |
-| 0.1 | +0.35 [-0.60, 1.39] | -0.96 [-2.39, 0.01] |
-| 0.2 | -0.01 [-0.04, 0.00] | -3.21 [-8.82, -0.07] |
-- The price clearly helps when calls are scarce (rho 0.05), where the planner also ties call-on-claim. With more calls, saving them stops mattering.
-- v2 and the released AdaptNet give the same picture: the planner beats no-price at rho 0.05 (+2.06 and +1.21, CIs above 0) but loses more to call-on-claim. See `docs/results/adaptnet_comparison.csv`.
-- Why call-on-claim is hard to beat: almost all value comes from catching ResNet's false CVS claims, which that rule targets directly; the oracle only beats it by about 2.7 points per video.
-- The reward model is weak (test correlation with true gain about 0.35) and underestimates gains on ResNet's claims, because ResNet's claims are false far more often on test (27 of 33) than on val (14 of 39).
+| rho | DP planner - no-price | DP planner - call-on-claim | oracle - call-on-claim |
+|---|---|---|---|
+| 0.05 | +0.82 [0.03, 1.80] | -1.26 [-2.69, -0.16] | +2.61 |
+| 0.1 | +0.69 [0.06, 1.56] | -2.61 [-6.90, -0.17] | +3.35 |
+| 0.2 | -0.01 [-0.04, 0.00] | -5.16 [-14.13, -0.38] | +3.84 |
+- The planner beats no-price at both rho 0.05 and 0.1 with the CIs above 0: pricing calls works. With lambda 0 and no CVS layer this only held at rho 0.05 (+1.24 [0.22, 2.48]).
+- Call-on-claim still wins. Test video 171 drives much of that: ResNet falsely claims CVS on 18 of its frames (18 of test's 27 false claims), each worth 11 to 13 points to a call. Without it (sensitivity check only, 171 stays in the main result), planner - call-on-claim at rho 0.1 is -0.63 [-1.29, -0.03] for this setup.
+- Not leakage: videos are split cleanly (train 1-120, val 121-161, test 162-201). Other things to state: 28 of ResNet's 39 val claims come from 3 videos, and only 50 of val's 170 CVS frames have all three annotators agreeing on all three criteria.
+- Linked frames: a frame worth calling makes the next one 38% likely to be worth calling (12% normally); a ResNet claim is followed by another 26% of the time (1.7% normally). The value table assumes independence.
 
 ### Next
-- Possible reward-model improvements: probability-based expected gain as an extra feature, features that separate risky from safe ResNet claims. Any tuning on val only.
+- Value table with linked frames: add "was the last frame a ResNet claim" as state, with claim-follows-claim rates from val pooled into 2 or 3 position groups; report with and without.
+- Reward model: false-CVS risk features (claim x (1 - r1 r2 r3), its missed-CVS partner), monotonic constraints, ridge as a comparison. Any tuning on val only.
 - If AdaptNet is retrained again: train on all 120 train videos for a fixed number of epochs instead of picking the epoch on 12 videos.
 - The `.bat` helper scripts used on Windows live in `outputs/run/` (not in git). Python on the PC is `%USERPROFILE%\miniconda3\python.exe`.

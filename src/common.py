@@ -28,6 +28,10 @@ PRED_COLS = ["split", "video", "frame_idx", "N_v"] + Y_COLS + R_COLS + A_COLS
 # ---------- Constants ----------
 THRESHOLD = 0.5
 FALSE_CVS_PENALTY = 10.0
+# Missed-CVS penalty (lambda): charged when the truth is CVS but the prediction does not claim it.
+# 3 is the main setup (chosen by the group); 0 gives the original reward. A false claim still costs
+# more than a miss. Set it per run with the CVS_LAMBDA environment variable.
+MISSED_CVS_PENALTY = float(os.environ.get("CVS_LAMBDA", 3))
 CALL_COST = 0.5
 RHO = 0.1
 
@@ -56,7 +60,8 @@ def is_cvs(labels):
 def score(pred, truth):
     """Per-frame reward without the call cost.
 
-    Number of correct criteria, minus 10 if the prediction claims CVS and that is wrong.
+    Number of correct criteria, minus 10 if the prediction claims CVS and that is wrong, minus
+    MISSED_CVS_PENALTY (lambda, 3 by default) if the truth is CVS and the prediction does not claim it.
     Both inputs are (n, 3) arrays of 0/1. Probabilities must be thresholded first.
     """
     pred, truth = np.asarray(pred), np.asarray(truth)
@@ -65,7 +70,8 @@ def score(pred, truth):
             raise ValueError(f"score() needs 0/1 values, but {name} has others")
     correct = (pred == truth).sum(axis=-1)
     false_cvs = is_cvs(pred) & ~is_cvs(truth)
-    return correct - FALSE_CVS_PENALTY * false_cvs
+    missed_cvs = is_cvs(truth) & ~is_cvs(pred)
+    return correct - FALSE_CVS_PENALTY * false_cvs - MISSED_CVS_PENALTY * missed_cvs
 
 
 def budget(n_frames, rho=RHO):
@@ -200,6 +206,7 @@ def video_results(video, calls, rho=RHO):
     truth = video[Y_COLS].to_numpy()
     return {"return": float(score(pred, truth).sum() - CALL_COST * calls.sum()),
             "false_cvs": int((is_cvs(pred) & ~is_cvs(truth)).sum()),
+            "missed_cvs": int((is_cvs(truth) & ~is_cvs(pred)).sum()),
             "calls": int(calls.sum()), "budget": budget(len(video), rho), "frames": len(video)}
 
 
@@ -215,7 +222,8 @@ def summarise(per_video):
     """One row from a per-video results table."""
     lo, hi = bootstrap_ci(per_video["return"])
     return {"mean_return": per_video["return"].mean(), "ci_low": lo, "ci_high": hi,
-            "false_cvs": int(per_video["false_cvs"].sum()), "calls": int(per_video["calls"].sum()),
+            "false_cvs": int(per_video["false_cvs"].sum()), "missed_cvs": int(per_video["missed_cvs"].sum()),
+            "calls": int(per_video["calls"].sum()),
             "budget": int(per_video["budget"].sum()), "videos": len(per_video)}
 
 

@@ -85,7 +85,10 @@ Run in this order from the repository root. All steps are written and have been 
 1. `python src/00_train_resnet.py` trains ResNet18 and saves `weights/resnet18_cvs_<version>.pt`. Needs a GPU.
 2. `python src/00b_train_adaptnet.py` fine-tunes CVS-AdaptNet and saves `weights/cvs_adaptnet_<version>.pth`. Needs a GPU.
 3. `python src/01_predict.py` runs both models on the validation and test splits using a GPU and writes `outputs/preds.csv`.
-4. `python src/02_prep.py` picks AdaptNet's cut-offs on val, adds gain labels and state features, and writes `outputs/prepped.csv` and `outputs/thresholds.csv`.
-5. `python src/03_baselines.py` evaluates the baselines and oracle to measure routing headroom.
-6. `python src/04_reward_model.py` fits the five-fold reward model and writes the 10-bin gain distribution to `outputs/gain_dist.npz`.
-7. `python src/05_dp_planner.py` builds the value table, evaluates the policy, and writes the final method results to `outputs/results.csv`.
+4. `python src/01b_extract_features.py` saves AdaptNet's image embeddings for train, val and test to `outputs/features_v1.npz`, for the CVS layer. Needs a GPU (about 3 minutes).
+5. `python src/02_prep.py` picks AdaptNet's cut-offs on val, fits the CVS layer on train, adds gain labels and state features, and writes `outputs/prepped.csv` and `outputs/thresholds.csv`. `--no-cvs-head` turns the CVS layer off.
+6. `python src/03_baselines.py` evaluates the baselines and oracle to measure routing headroom.
+7. `python src/04_reward_model.py` fits the five-fold reward model and writes the 10-bin gain distribution to `outputs/gain_dist.npz`.
+8. `python src/05_dp_planner.py` builds the value table, evaluates the policy, and writes the final method results to `outputs/results.csv`.
+
+The reward's missed-CVS penalty is 3 by default. Set `CVS_LAMBDA` to change it for a run (0 gives the original reward), for example `CVS_LAMBDA=0 python src/02_prep.py`, and the same for steps 6 to 8.
