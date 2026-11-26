@@ -23,7 +23,8 @@ Budget-aware Critical View of Safety (CVS) assessment in laparoscopic cholecyste
 - CVS is true on 5.3% of train, 7.3% of val and 7.6% of test frames (369 / 170 / 136).
 
 ## Split rules (important)
-- train: train ResNet18 and AdaptNet only. Both use the same 12 held-out train videos (`HOLDOUT_VIDEOS` in `src/common.py`) for picking the best epoch, so val stays untouched. Do not change that list: random draws can hold 0% to 38% of the CVS frames.
+- train: train ResNet18 and AdaptNet only. ResNet18 v1, v1b, r112 and AdaptNet v1, v2 use the same 12 held-out train videos (`HOLDOUT_VIDEOS` in `src/common.py`) for picking the best epoch, so val stays untouched. Do not change that list: random draws can hold 0% to 38% of the CVS frames. The holdout is too small to rank models (it rated v2 below v1, and v1b's "weak" epochs above v1 on val), so AdaptNet v3 trains on all 120 train videos for a fixed 12 epochs with no epoch picking.
+- Step 6 exception: 5 ResNet18s trained by video fold on all 120 train videos (fixed 8 epochs, `00_train_resnet.py --fold k`) give out-of-fold predictions on train (`outputs/train_oof/`). Each fold's model never saw the videos it predicts. Their claim frames may only feed the router's claim classifier (`04_reward_model.py --extra-claims`, a declared secondary, not the main setup). AdaptNet is never run on train frames for the router.
 - val: everything for the router (reward model, gain distribution, value table).
 - test: final results only. Never used to build anything.
 - Any split inside a dataset is by video, never by frame.
@@ -101,11 +102,31 @@ preds.csv columns: split, video, frame_idx, N_v, y1, y2, y3, r1, r2, r3, a1, a2,
 - Gain distribution treats future frames as independent within a time bin (CVS claims really come in runs).
 - Budget formula and position feature use N_v, which isn't known in real time.
 - The two models see different views: ResNet the whole frame, AdaptNet the authors' centre crop.
+- Val and test differ by video: test video 171 alone gives 18 of test's 27 false ResNet claims (it has no real CVS). Val claims are false 34% of the time, test claims 82%, out-of-fold train claims 69%. So val looks unusually kind to ResNet's claims.
+- The main reward model learnt on val that claims inside a run are usually true (val leans on video 161, 13 of 38 claim frames). On test this fails on video 171's run of false claims.
+- With a sharp reward model the budget never binds, so the planner's price is zero. The value of planning depends on how noisy the gain predictor is.
+- AdaptNet at its accuracy-calibrated cut-offs rarely claims CVS (5 true claims on val), so calls can hardly catch missed CVS, even with the missed-CVS penalty.
 
 ## Current status
-Everything has run on the training PC (RTX 5070, Miniconda base env, torch 2.15 + CUDA 13.2). Results are in `docs/results/`.
+Two rounds of results. The PC round (below, "PC run") used the old reward (no missed-CVS term) and the old boosted reward model. The next-fixes round ran on the Mac (MPS) on branch `next-fixes`: plan, choices and every result in `docs/results/next_fixes/` (start with `final_run_plan.md`, written before test). On the Mac, val ResNet claims are 38 (13 false) instead of 39 (14 false): one frame flipped (fp32 vs fp16).
 
-### Main setup (agreed with the group)
+### Next fixes, final results (test, Mac, one run per declared setup)
+Main setup: ResNet18 v1 + AdaptNet v1 (calibrated), reward with missed-CVS penalty 5, reward model `split compact`, DP planner.
+DP planner - no-price on test, 95% CI over videos, for the four combinations of reward and reward model:
+| rho 0.05 / 0.1 | gbr200 (old reward model) | split compact (new) |
+|---|---|---|
+| lambda 0 (old reward) | +1.55 [0.34, 3.10] / +0.71 [0.05, 1.59] (`pc_repro`) | 0.00 / 0.00 (`main_lambda0`) |
+| lambda 5 (new reward) | +1.15 [0.34, 2.16] / +0.57 [0.04, 1.41] (`main_gbr200`) | 0.00 / 0.00 (`main_v1`, main) |
+- The PC headline reproduces on the Mac (PC: +1.24 and +0.35), and survives the new reward. The change of reward model removes it: the split model calls only on claim frames it thinks are false (10 calls on test, budgets 96 to 360), so the budget never binds and the price is zero. Same on val in all 39 sweep settings.
+- DP planner - call-on-claim, main setup: -1.18 [-3.92, 0.65], -2.61 [-8.25, 0.65], -4.94 [-15.22, 0.65] at rho 0.05, 0.1, 0.2. Main setup makes 19 false CVS on test against call-on-claim's 13 / 8 / 0: it trusted video 171's run of false claims (the risk written down before the run). With gbr200: -1.09, -2.77, -5.35. Call-on-claim wins on test in every setup; on val the planner beat it (+1.09 at rho 0.1). Oracle - call-on-claim on test: 3.44 / 4.22 / 4.72 with lambda 5 (2.06 / 2.73 / 3.23 with lambda 0).
+- `main_extra_claims` (step 6 train claims in the classifier, not main because its false-claim rate failed the pre-declared check): 15 false CVS, DP - call-on-claim -0.10 at rho 0.05.
+- Prev-claim planner (step 7): 0.00 on test for the main setup, +0.30 [0.00, 0.84] at rho 0.05 in `pc_repro`. Not worth the extra state.
+- AdaptNet v3 (step 8, all 120 train videos, 12 epochs, no shuffle, last epoch, about 1.2 h on the Mac): test mAP 0.492 (v1 0.472, v2 0.504, released 0.572). Kept as secondary by the pre-declared val rule (val mAP higher, val mean score lower). In the router: 19 false CVS, oracle headroom over call-on-claim 5.0 / 6.5 / 7.7.
+- Cheap-model sweep (step 9, `model_quality.csv`, `final_*.csv`, setups `cheap_*`): DP = no-price for all; oracle headroom does not grow as the cheap model gets worse (v1 4.22, v1b_e1 3.19, v1b_e3 3.62, r112 3.85 at rho 0.1). Call-on-claim captures most of what a claim-happy ResNet adds.
+- Step 1 (lambda 0, 3, 5, 7 on val): lambda raises the oracle headroom but barely changes missed CVS (145 to 149 of 170), because AdaptNet rarely claims CVS. Step 2 (penalty 5/10/20, fee 0.25/0.5/1.0): with gbr200 the price helps only when the budget binds (high penalty, low fee); with split, never.
+- Step 3 (`cvs_metrics.csv`): CVS-level AP (product score) val ResNet 0.43 vs AdaptNet 0.35, test ResNet 0.19 vs AdaptNet 0.28. Both have recall under 15% at the cut-offs in use.
+
+### PC run: main setup (agreed with the group)
 - Cheap model: ResNet18 v1, cut at 0.5 (trained with BCE, so 0.5 is meaningful).
 - Expensive model: our AdaptNet v1, with per-criterion cut-offs chosen on val (see 02 below).
 - Goal: show that the decider's logic works, so the key comparison is DP planner vs no-price.
@@ -133,7 +154,7 @@ Everything has run on the training PC (RTX 5070, Miniconda base env, torch 2.15 
 - Do not choose cut-offs by the router's reward: the -10 penalty makes "never claim CVS" the best answer.
 - `--calibrate-resnet` does the same for ResNet. It sets C1 to 0.976, so ResNet almost never claims CVS and the router has nothing left to do. Not used. Worth discussing: the reward favours a model that never detects CVS.
 
-### Results, main setup (test, mean per-video difference, 95% bootstrap CI over videos)
+### PC run: results, main setup (test, old reward and reward model, mean per-video difference, 95% bootstrap CI)
 | rho | DP planner - no-price | DP planner - call-on-claim |
 |---|---|---|
 | 0.05 | +1.24 [0.22, 2.48] | -0.11 [-0.34, 0.09] |
@@ -145,6 +166,7 @@ Everything has run on the training PC (RTX 5070, Miniconda base env, torch 2.15 
 - The reward model is weak (test correlation with true gain about 0.35) and underestimates gains on ResNet's claims, because ResNet's claims are false far more often on test (27 of 33) than on val (14 of 39).
 
 ### Next
-- Possible reward-model improvements: probability-based expected gain as an extra feature, features that separate risky from safe ResNet claims. Any tuning on val only.
-- If AdaptNet is retrained again: train on all 120 train videos for a fixed number of epochs instead of picking the epoch on 12 videos.
-- The `.bat` helper scripts used on Windows live in `outputs/run/` (not in git). Python on the PC is `%USERPROFILE%\miniconda3\python.exe`.
+- Decide how to present the main result: the honest headline is that pricing calls helps only when the gain predictor is noisy enough for the budget to bind. The 2x2 above shows it.
+- The val/test shift (video 171) dominates every comparison with call-on-claim. A reward model trained on more varied claims (step 6 data, or a new split of train) would be the next lever.
+- Delete `weights/cvs_adaptnet_v3_last.pth` (1.6 GB, only for --resume) once v3 is no longer needed.
+- The `.bat` helper scripts used on Windows live in `outputs/run/` (not in git). Python on the PC is `%USERPROFILE%\miniconda3\python.exe`. On the Mac, `outputs/run/mps_queue.sh` ran the GPU jobs.
