@@ -24,3 +24,6 @@ Everything below was fixed on val (or on the train holdout) before test was touc
 ## Rules for the two pending GPU results
 - AdaptNet v3 (all 120 train videos, 12 epochs, no epoch picking): it becomes the main AdaptNet only if it has both a higher val pos/neg mAP and a higher val mean score at its calibrated cut-offs than v1. If it does, the reward-model selection rule in `04_reward_model.py` is applied again on v3's val data (no other re-tuning), and v1 is kept as a declared secondary.
 - Step 6 (out-of-fold ResNet on the 120 train videos): its claim frames are added to the claim classifier only if (a) its claim rate and false-claim rate are close to val's (false-claim rate within 15 percentage points), and (b) the val out-of-fold claim-frame correlation, mean over 5 fold seeds, improves by more than one SD. Otherwise it is reported and not used.
+
+## Note on the cheap-model sweep (val, added before test)
+The checkpoints chosen as weaker on the 12-video train holdout are not weaker on val by mAP (v1 0.396, v1b_e1 0.406, v1b_e3 0.420, r112 0.323). They differ in how often they claim CVS: v1b_e1 makes 75 val claims (36 false) against v1's 38 (13 false). So the sweep is read against claim behaviour (false claims), with mAP reported alongside. This is one more sign that the 12-video holdout cannot rank models.
