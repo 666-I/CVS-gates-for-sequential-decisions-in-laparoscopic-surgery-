@@ -42,6 +42,36 @@ FEATURE_SETS = {
 MODELS = ["gbr200", "gbr_small", "ridge", "hgb_mono", "split"]
 
 
+def train_oof_claims(pattern=None):
+    """Claim frames from the out-of-fold ResNet predictions on the train split (step 6), or None.
+
+    Built by `00_train_resnet.py --fold k` for k = 0..4: each train frame is predicted by a ResNet
+    that never saw its video. The state features are computed as in 02_prep (ResNet cut at 0.5,
+    past frames only), and `false` says whether the claim is false. AdaptNet was never run on
+    these frames, so they can only feed the claim classifier, not the gain means.
+    """
+    import glob
+    import pandas as pd
+    import os
+    folder = os.environ.get("CVS_TRAIN_OOF_DIR", str(c.ROOT / "outputs" / "train_oof"))
+    pattern = pattern or os.path.join(folder, "resnet18_oof_fold*.csv")
+    files = sorted(glob.glob(pattern))
+    if len(files) != 5:
+        raise SystemExit(f"--extra-claims needs the 5 out-of-fold files, found {len(files)} at {pattern}")
+    df = pd.concat([pd.read_csv(f) for f in files]).sort_values(["video", "frame_idx"]).reset_index(drop=True)
+    g = df.groupby("video", sort=False)
+    df["t"] = g.cumcount()
+    df["r_cvs"] = (df[c.R_COLS].to_numpy() >= c.THRESHOLD).all(axis=1).astype(int)
+    df["r_min"] = df[c.R_COLS].min(axis=1)
+    df["pos"] = df["t"] / df["N_v"]
+    df["recent_claims"] = df.groupby("video", sort=False)["r_cvs"].transform(
+        lambda x: x.shift(1).rolling(c.RECENT, min_periods=1).mean()).fillna(0.0)
+    df = add_risk_features(df)
+    claims = df[df["r_cvs"] == 1].copy()
+    claims["false"] = (~c.is_cvs(claims[c.Y_COLS].to_numpy())).astype(int)
+    return claims
+
+
 def add_risk_features(df):
     """Copy of df with p_cvs, claim_risk and miss_risk added (from r1..r3 and r_cvs only)."""
     df = df.copy()
@@ -83,9 +113,10 @@ class SplitGain:
     (it happens with a few videos), the classifier is replaced by that base rate.
     """
 
-    def __init__(self, features):
+    def __init__(self, features, extra_claims=None):
         drop = {"r_cvs", "claim_risk", "miss_risk", "claim_pos", "claim_recent"}
         self.claim_features = [f for f in features if f not in drop]
+        self.extra = extra_claims  # optional train claim frames (train_oof_claims), classifier only
 
     @staticmethod
     def _false(frames):
@@ -94,11 +125,15 @@ class SplitGain:
     def fit(self, frames):
         claims = frames[frames["r_cvs"] == 1]
         false = self._false(claims)
+        x = claims[self.claim_features]
+        if self.extra is not None:
+            import pandas as pd
+            x = pd.concat([x, self.extra[self.claim_features]])
+            false = np.concatenate([false, self.extra["false"].to_numpy()])
         self.rate = float(false.mean()) if len(false) else 0.5
         self.clf = None
         if 0 < false.sum() < len(false):
-            self.clf = make_pipeline(StandardScaler(), LogisticRegression(C=1.0)).fit(
-                claims[self.claim_features], false)
+            self.clf = make_pipeline(StandardScaler(), LogisticRegression(C=1.0)).fit(x, false)
         is_false = self._false(claims).astype(bool)
         overall = float(claims["gain"].mean()) if len(claims) else 0.0
         self.gain_false = float(claims.loc[is_false, "gain"].mean()) if is_false.any() else overall
@@ -124,8 +159,8 @@ class SplitGain:
         return dict(zip(self.claim_features, self.clf[-1].coef_[0])) if self.clf is not None else {}
 
 
-def make_model(model, features="slim"):
-    """Build a model by name. `features` is a key of FEATURE_SETS (split ignores it)."""
+def make_model(model, features="slim", extra_claims=None):
+    """Build a model by name. `features` is a key of FEATURE_SETS. extra_claims: split only."""
     cols = FEATURE_SETS[features]
     if model == "gbr200":
         est = GradientBoostingRegressor(n_estimators=200, max_depth=3, learning_rate=0.05,
@@ -143,7 +178,7 @@ def make_model(model, features="slim"):
                                             min_samples_leaf=40, l2_regularization=1.0,
                                             monotonic_cst=cst, random_state=0)
     elif model == "split":
-        return SplitGain(cols)
+        return SplitGain(cols, extra_claims)
     else:
         raise ValueError(f"model must be one of {MODELS}, got {model!r}")
     return Regressor(est, cols)

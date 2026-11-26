@@ -6,7 +6,7 @@
 - Plain, direct language. No em dashes.
 
 ## Two computers
-- Writing computer (Mac, no GPU, no dataset): writes scripts, checks them on fake images.
+- Mac (M5 Pro, 48 GB): now has the dataset and weights too, and runs every script on its GPU through MPS (`common.get_device`: CUDA, then MPS). Python is `.venv/bin/python` (uv, Python 3.12, torch 2.15). MPS runs in full precision, the PC used fp16, so a frame near a cut-off can flip (one ResNet val claim did). The next-fixes results come from the Mac.
 - Training PC (RTX 5070, 12 GB, or 8 GB if it is a laptop): has the dataset and weights, runs the GPU scripts. If you are on this one, start at "Current status".
 - Code goes through git. `data/`, `weights/` and `outputs/` are not in git: share weights by drive. Copy small training logs to `docs/training_logs/` so they can be pushed.
 - Never push images, weights or any part of the dataset (licence).
@@ -34,7 +34,7 @@ Budget-aware Critical View of Safety (CVS) assessment in laparoscopic cholecyste
 - Budget: B_v = max(1, round(rho * N_v)), rho = 0.1, halves round up (45 frames gives 5). Use `common.budget`, because Python's round() gives 4. b_{t+1} = b_t - a_t.
 - Criteria: C1 = two structures, C2 = hepatocystic triangle dissection, C3 = cystic plate.
 - Final prediction: yhat_t = (1 - a_t) * yhat_t^R + a_t * yhat_t^A (a call replaces all 3 criteria with AdaptNet's answers).
-- Reward: R_t = sum_i 1[yhat_ti = y_ti] - 10 * 1[false CVS_t] - 0.5 * a_t. False CVS = prediction says all 3 met but truth isn't CVS.
+- Reward: R_t = sum_i 1[yhat_ti = y_ti] - 10 * 1[false CVS_t] - 5 * 1[missed CVS_t] - 0.5 * a_t. False CVS = prediction says all 3 met but truth isn't CVS. Missed CVS = truth is CVS but the prediction does not claim all 3 (added in the next fixes; before it, never claiming CVS scored well). The weights come from `CVS_FALSE_CVS_PENALTY`, `CVS_MISSED_CVS_PENALTY` and `CVS_CALL_COST` (defaults 10, 5, 0.5); `CVS_MISSED_CVS_PENALTY=0` gives the old reward.
 - Budget size reasoning: P(CVS) <= min_i P(C_i) = P(C2) (about 11.2% train, 12.5% val, 17% test), so rho = 0.1 sits just below that. What really matters is how often ResNet claims CVS, so measure that on val.
 - Return: undiscounted sum over the video (gamma = 1).
 - State: ResNet confidence per criterion, ResNet CVS-claim flag, weakest criterion prob, position in video t/N_v, recent-claims average (past frames only), calls left, frames left.
@@ -49,12 +49,13 @@ Budget-aware Critical View of Safety (CVS) assessment in laparoscopic cholecyste
 1. Prediction table (data prep): run both models once on all val and test frames, save `outputs/preds.csv`.
 2. Gain labels (data prep): g_t = score(AdaptNet) - score(ResNet) on val, where score is the reward without call cost.
 3. State features (data prep): from ResNet output, position in video, budget. Past frames only.
-4. Reward model (SUPERVISED): gradient-boosted regressor, MSE, predicts g_t from state features. 5-fold GroupKFold by video on val -> out-of-fold predictions. Then a final model on all val, used on test.
+4. Reward model (SUPERVISED): predicts g_t from state features. 5-fold GroupKFold by video on val -> out-of-fold predictions. Then a final model on all val, used on test. Default since the next fixes: `--model split --features compact` (on claim frames, a logistic regression on p_cvs, r_min, position and recent claims gives P(claim is false), and dhat = p * mean gain of false claims + (1 - p) * mean gain of true claims; on other frames, the mean gain of the position bin). The old 200-tree boosted regressor is `--model gbr200 --features base`. Variants and the selection rule: `reward_models.py`, `eval_reward_models.py`, `docs/results/next_fixes/reward_models_val.csv`.
 5. Gain distribution: out-of-fold predicted gains sorted into 10 bins by position in video (t/N_v). Collected, not trained.
 6. Value table (RL): V(t, b) filled backwards (backward induction / finite-horizon value iteration):
    V(t,b) = mean over d in bin(t) of max(d - 0.5 + V(t+1,b-1), V(t+1,b)), V(t,0) = 0, V(N+1,b) = 0.
 7. Policy (RL): call iff dhat_t - 0.5 > V(t+1,b) - V(t+1,b-1) (the price of a call). Budget is a limit, not a target: calls must always beat the 0.5 fee.
-8. Evaluation on test.
+   05 also runs "DP planner (prev claim)", V(t, b, x) with x = whether frame t-1 was a ResNet claim (claims come in runs). It raises the price after a claim but changed almost no decision on val, so the plain DP planner stays the main method.
+8. Evaluation on test. Scripts 02 to 05 take `--splits` (default `val`); test only goes through `src/final_run.sh`, once, for the setups in `docs/results/next_fixes/final_run_plan.md`.
 
 ## Baselines and evaluation
 - Always ResNet; call-on-claim (call whenever ResNet claims CVS while budget lasts); no-price rule (same reward model, call iff dhat - 0.5 > 0); hindsight oracle (per video, take the top B_v frames by true gain where gain > 0.5).
@@ -85,6 +86,13 @@ src/
   03_baselines.py       # headroom check + oracle
   04_reward_model.py    # 5-fold reward model + gain distribution
   05_dp_planner.py      # value table + policy + evaluation
+  reward_models.py      # reward model variants (04 and the evals use them)
+  sweep_reward.py       # 02-05 per reward setting (lambda, penalty, fee), val only
+  eval_reward_models.py # reward model comparison on val
+  eval_extra_claims.py  # step 6: do train out-of-fold claims help the claim classifier
+  diag_cvs_metrics.py   # CVS-level AP, precision, recall, F1 per model
+  diag_shift.py         # val/test shift by video, claim runs
+  final_run.sh          # the one final test run per setup
 ```
 preds.csv columns: split, video, frame_idx, N_v, y1, y2, y3, r1, r2, r3, a1, a2, a3. Sorted by video then frame.
 
