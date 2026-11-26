@@ -33,3 +33,9 @@ The 5 fold ResNets (fixed 8 epochs) give 70 claim frames on train (1.0% of frame
 
 ## Sweeps redone with the main reward model (val, added before test)
 With `split compact`, DP planner equals no-price exactly in all 39 val settings (lambda 0, 3, 5, 7; false-CVS penalty 5, 10, 20; fee 0.25, 0.5, 1.0; rho 0.05, 0.1, 0.2). The model calls only on claim frames it thinks are false (7 to 21 calls in all of val, against budgets of 123 or more), so the budget never binds. Files: lambda_split_val.csv, sensitivity_split_val.csv. The earlier lambda_sweep_val.csv and sensitivity_val.csv used the old boosted reward model.
+
+## AdaptNet v3 outcome (val, added before test)
+v3 trained on all 120 train videos for 12 epochs in the authors' video order (about 1.2 h on the Mac GPU). Val pos/neg mAP 0.440 (v1 0.430), but val mean score at its calibrated cut-offs 2.113 (v1 2.134, both with lambda = 5), with 27 CVS claims (17 false) against v1's 15 (10 false). The rule needs both to be higher, so the main AdaptNet stays v1 and v3 runs as the declared secondary `adapt_v3` (with the main reward model, no re-selection).
+
+## Executed
+`src/final_all.sh` (MAIN=v1), then `src/collect_final.py`.
