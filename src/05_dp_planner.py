@@ -17,6 +17,8 @@ test (the gain distribution comes from val), they are there as a sanity check. T
 
 Writes outputs/results.csv, outputs/paired.csv and outputs/figures/call_price.png.
 """
+import argparse
+
 import numpy as np
 import pandas as pd
 
@@ -81,12 +83,18 @@ def plot_price(dist, path):
 
 
 def main():
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--splits", default="val", help="val, test or val,test. Test is for the final run only.")
+    splits = c.parse_splits(p.parse_args().splits)
     df = pd.read_csv(c.OUTPUTS_DIR / "reward_preds.csv")
+    missing = set(splits) - set(df["split"])
+    if missing:
+        raise SystemExit(f"reward_preds.csv has no {sorted(missing)} rows. Run 04 with --splits val,test first.")
     npz = np.load(c.OUTPUTS_DIR / "gain_dist.npz")
     dist = [npz[f"bin_{b}"] for b in range(c.N_BINS)]
 
     rows, pairs = [], []
-    for split in ("val", "test"):
+    for split in splits:
         videos = [v.reset_index(drop=True) for _, v in df[df.split == split].groupby("video")]
         for rho in RHOS:
             results = {}
@@ -95,7 +103,7 @@ def main():
                     results.setdefault(name, []).append(c.video_results(v, calls, rho))
             tables = {name: pd.DataFrame(r) for name, r in results.items()}
             for name, table in tables.items():
-                rows.append({"split": split, "rho": rho, "method": name, **c.summarise(table)})
+                rows.append({"split": split, "rho": rho, "method": name, **c.reward_settings(), **c.summarise(table)})
             returns = pd.DataFrame({name: t["return"] for name, t in tables.items()})
             for a, b in (("DP planner", "no-price"), ("DP planner", "call-on-claim"),
                          ("no-price", "call-on-claim"), ("oracle", "call-on-claim")):
