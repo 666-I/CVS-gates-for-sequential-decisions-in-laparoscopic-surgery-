@@ -33,7 +33,10 @@ THRESHOLD = 0.5
 FALSE_CVS_PENALTY = float(os.environ.get("CVS_FALSE_CVS_PENALTY", 10.0))
 # Missing a real CVS (truth is CVS, prediction does not claim all 3). Without it, a missed CVS
 # costs at most 3 while a false claim costs 10, so never claiming CVS scores well.
-MISSED_CVS_PENALTY = float(os.environ.get("CVS_MISSED_CVS_PENALTY", 0.0))
+# 5 = half a false claim: missing CVS delays the operation, a false claim risks injury. Chosen
+# a priori; the lambda sweep (0, 3, 5, 7) on val shows the same picture for 3 to 7.
+# CVS_MISSED_CVS_PENALTY=0 gives the old reward.
+MISSED_CVS_PENALTY = float(os.environ.get("CVS_MISSED_CVS_PENALTY", 5.0))
 CALL_COST = float(os.environ.get("CVS_CALL_COST", 0.5))
 RHO = 0.1
 
