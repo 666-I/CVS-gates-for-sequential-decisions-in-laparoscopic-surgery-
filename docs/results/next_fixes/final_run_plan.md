@@ -30,3 +30,6 @@ The checkpoints chosen as weaker on the 12-video train holdout are not weaker on
 
 ## Step 6 outcome (val, added before test)
 The 5 fold ResNets (fixed 8 epochs) give 70 claim frames on train (1.0% of frames), 69% of them false, against 38 claims on val (1.6%), 34% false. The rule above says not to use them: the false-claim rates differ by 35 points, although the val claim-frame correlation improves by more than one SD (0.436 +- 0.052 to 0.501 +- 0.032; AUC 0.83 to 0.86). The train rate is much closer to test's than val's is, which suggests val's claims are unusually often true. Added as a declared secondary run: `main_extra_claims`, `ARGS04="--extra-claims"`. The main setup does not use them.
+
+## Sweeps redone with the main reward model (val, added before test)
+With `split compact`, DP planner equals no-price exactly in all 39 val settings (lambda 0, 3, 5, 7; false-CVS penalty 5, 10, 20; fee 0.25, 0.5, 1.0; rho 0.05, 0.1, 0.2). The model calls only on claim frames it thinks are false (7 to 21 calls in all of val, against budgets of 123 or more), so the budget never binds. Files: lambda_split_val.csv, sensitivity_split_val.csv. The earlier lambda_sweep_val.csv and sensitivity_val.csv used the old boosted reward model.
