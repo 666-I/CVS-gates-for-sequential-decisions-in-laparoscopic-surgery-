@@ -11,10 +11,17 @@ import pandas as pd
 import common as c
 
 OUT = c.ROOT / "docs" / "results" / "next_fixes"
+# Every setup declared in final_run_plan.md (main_v1 or main_v3, whichever the v3 rule chose).
+DECLARED = ["main_gbr200", "main_split_slim", "main_extra_claims", "main_lambda0", "pc_repro",
+            "cheap_v1b_e1", "cheap_v1b_e3", "cheap_r112"]
 
 
 def main():
     root = c.ROOT / "outputs" / "final"
+    mains = [m for m in ("main_v1", "main_v3") if (root / m / "paired.csv").exists()]
+    missing = [d for d in DECLARED if not (root / d / "paired.csv").exists()]
+    if len(mains) != 1 or missing:
+        raise SystemExit(f"final run incomplete: main setups found {mains}, missing {missing}")
     results, paired = [], []
     for folder in sorted(p for p in root.iterdir() if (p / "paired.csv").exists()):
         results.append(pd.read_csv(folder / "results.csv").assign(setup=folder.name))

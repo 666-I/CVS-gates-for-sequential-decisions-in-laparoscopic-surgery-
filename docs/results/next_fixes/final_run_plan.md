@@ -13,7 +13,8 @@ Everything below was fixed on val (or on the train holdout) before test was touc
 ## Declared secondary runs (reported whatever they show)
 - `main_gbr200`: same as main but the old reward model, `ARGS04="--model gbr200 --features base"`. On val this is the only setup where the budget binds and the price matters, so it shows the contrast.
 - `main_split_slim`: `ARGS04="--model split --features slim"`, the variant the subagent's tie-break picked.
-- `main_lambda0`: main setup with `CVS_MISSED_CVS_PENALTY=0` (the old reward), to compare with the PC results.
+- `main_lambda0`: main setup with `CVS_MISSED_CVS_PENALTY=0` (the old reward, new reward model).
+- `pc_repro`: `CVS_MISSED_CVS_PENALTY=0 ARGS04="--model gbr200 --features base"`, the PC's setup (old reward, old reward model), added before test so the four combinations of reward (lambda 0 or 5) and reward model (gbr200 or split compact) are all run. It shows whether the PC headline reproduces on the Mac, and which change removed it.
 - Cheap-model sweep (step 9), same AdaptNet answers: `v1b_e1` (retrain of v1, epoch 1), `v1b_e3` (epoch 3; replaces the planned epoch 6, because in this rerun epoch 6 made 0 holdout claims while epoch 3 made 13, 11 false, like the PC's epoch 6), `r112` (112x112 input, best holdout epoch). Chosen on the train holdout only.
 
 ## Known risk, written down before the test run

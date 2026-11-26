@@ -7,6 +7,7 @@
 #   src/final_run.sh v1b_e1 outputs/cheap/v1b_e1/preds.csv
 #   ARGS04="--model gbr200 --features base" src/final_run.sh main_gbr200 outputs/preds.csv
 set -e
+setopt pipefail   # a failing script must stop the run, not hide behind tee
 cd "$(dirname "$0")/.."
 PY=${PY:-.venv/bin/python}
 name=$1; preds=$2
