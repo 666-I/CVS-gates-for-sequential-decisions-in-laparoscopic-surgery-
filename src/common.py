@@ -26,9 +26,15 @@ A_COLS = ["a1", "a2", "a3"]  # AdaptNet probabilities
 PRED_COLS = ["split", "video", "frame_idx", "N_v"] + Y_COLS + R_COLS + A_COLS
 
 # ---------- Constants ----------
+# The reward weights can be changed with environment variables, so sweeps (steps 1 and 2 of the
+# next fixes) can run the same scripts with different values in separate output folders:
+#   CVS_FALSE_CVS_PENALTY=20 CVS_MISSED_CVS_PENALTY=5 CVS_OUTPUTS_DIR=outputs/sweep/x python src/02_prep.py
 THRESHOLD = 0.5
-FALSE_CVS_PENALTY = 10.0
-CALL_COST = 0.5
+FALSE_CVS_PENALTY = float(os.environ.get("CVS_FALSE_CVS_PENALTY", 10.0))
+# Missing a real CVS (truth is CVS, prediction does not claim all 3). Without it, a missed CVS
+# costs at most 3 while a false claim costs 10, so never claiming CVS scores well.
+MISSED_CVS_PENALTY = float(os.environ.get("CVS_MISSED_CVS_PENALTY", 0.0))
+CALL_COST = float(os.environ.get("CVS_CALL_COST", 0.5))
 RHO = 0.1
 
 # Expected size of each official split: (videos, labelled frames).
@@ -40,6 +46,22 @@ EXPECTED = {"train": (120, 6960), "val": (41, 2331), "test": (40, 1799)}
 # seeds, closest to 10% of frames, of each criterion's positives and of CVS positives
 # (seed 434). It was chosen from train labels only.
 HOLDOUT_VIDEOS = [10, 13, 22, 31, 42, 47, 60, 63, 67, 74, 87, 104]
+
+
+def get_device(allow_cpu=False):
+    """CUDA on the training PC, MPS on an Apple Silicon Mac, CPU only if allowed.
+
+    Mixed precision (autocast, GradScaler) is only used on CUDA. MPS runs in full precision,
+    so its predictions can differ from the PC's in the last digits.
+    """
+    import torch
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    if torch.backends.mps.is_available():
+        return torch.device("mps")
+    if allow_cpu:
+        return torch.device("cpu")
+    raise SystemExit("No GPU found (CUDA or MPS). Run this on a GPU machine, or use --smoke to check the code.")
 
 
 # ---------- Labels and scoring ----------
@@ -56,7 +78,8 @@ def is_cvs(labels):
 def score(pred, truth):
     """Per-frame reward without the call cost.
 
-    Number of correct criteria, minus 10 if the prediction claims CVS and that is wrong.
+    Number of correct criteria, minus FALSE_CVS_PENALTY if the prediction claims CVS and that is
+    wrong, minus MISSED_CVS_PENALTY if the truth is CVS and the prediction does not claim it.
     Both inputs are (n, 3) arrays of 0/1. Probabilities must be thresholded first.
     """
     pred, truth = np.asarray(pred), np.asarray(truth)
@@ -65,7 +88,21 @@ def score(pred, truth):
             raise ValueError(f"score() needs 0/1 values, but {name} has others")
     correct = (pred == truth).sum(axis=-1)
     false_cvs = is_cvs(pred) & ~is_cvs(truth)
-    return correct - FALSE_CVS_PENALTY * false_cvs
+    missed_cvs = ~is_cvs(pred) & is_cvs(truth)
+    return correct - FALSE_CVS_PENALTY * false_cvs - MISSED_CVS_PENALTY * missed_cvs
+
+
+def reward_settings():
+    """The reward weights in use, for log lines and result tables."""
+    return {"false_pen": FALSE_CVS_PENALTY, "missed_pen": MISSED_CVS_PENALTY, "fee": CALL_COST}
+
+
+def parse_splits(text):
+    """--splits for 03 to 05. Default val only: test is for the final run."""
+    splits = [s.strip() for s in text.split(",") if s.strip()]
+    if not splits or set(splits) - {"val", "test"}:
+        raise SystemExit(f"--splits takes val, test or val,test, got {text!r}")
+    return splits
 
 
 def budget(n_frames, rho=RHO):
@@ -200,6 +237,7 @@ def video_results(video, calls, rho=RHO):
     truth = video[Y_COLS].to_numpy()
     return {"return": float(score(pred, truth).sum() - CALL_COST * calls.sum()),
             "false_cvs": int((is_cvs(pred) & ~is_cvs(truth)).sum()),
+            "missed_cvs": int((~is_cvs(pred) & is_cvs(truth)).sum()),
             "calls": int(calls.sum()), "budget": budget(len(video), rho), "frames": len(video)}
 
 
@@ -215,7 +253,8 @@ def summarise(per_video):
     """One row from a per-video results table."""
     lo, hi = bootstrap_ci(per_video["return"])
     return {"mean_return": per_video["return"].mean(), "ci_low": lo, "ci_high": hi,
-            "false_cvs": int(per_video["false_cvs"].sum()), "calls": int(per_video["calls"].sum()),
+            "false_cvs": int(per_video["false_cvs"].sum()), "missed_cvs": int(per_video["missed_cvs"].sum()),
+            "calls": int(per_video["calls"].sum()),
             "budget": int(per_video["budget"].sum()), "videos": len(per_video)}
 
 

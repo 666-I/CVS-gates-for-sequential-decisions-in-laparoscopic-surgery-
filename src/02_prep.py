@@ -69,6 +69,7 @@ def main():
     p.add_argument("--no-calibrate", action="store_true", help="use 0.5 for AdaptNet, as in the first runs")
     p.add_argument("--calibrate-resnet", action="store_true",
                    help="also choose ResNet's cut-offs on val, the same way as AdaptNet's")
+    p.add_argument("--splits", default="val", help="splits to print summaries for (all rows are always written)")
     args = p.parse_args()
 
     df = pd.read_csv(c.OUTPUTS_DIR / "preds.csv")
@@ -103,7 +104,10 @@ def main():
     df.to_csv(c.OUTPUTS_DIR / "prepped.csv", index=False)
     print(f"wrote {len(df)} rows to {c.OUTPUTS_DIR / 'prepped.csv'}")
 
+    print(f"reward settings: {c.reward_settings()}")
     for split, part in df.groupby("split", sort=False):
+        if split not in c.parse_splits(args.splits):
+            continue
         counts = part["gain"].value_counts().sort_index()
         a_pred, truth = part[["ay1", "ay2", "ay3"]].to_numpy(), part[c.Y_COLS].to_numpy()
         a_claims = c.is_cvs(a_pred)

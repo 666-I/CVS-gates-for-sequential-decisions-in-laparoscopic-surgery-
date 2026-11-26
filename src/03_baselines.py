@@ -11,6 +11,8 @@ Runs on outputs/prepped.csv, for val and test, at rho = 0.1:
 If the oracle is barely above call-on-claim, there is little for a learnt router to win.
 Writes outputs/baselines.csv.
 """
+import argparse
+
 import numpy as np
 import pandas as pd
 
@@ -25,18 +27,21 @@ POLICIES = {
 
 
 def main():
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--splits", default="val", help="val, test or val,test. Test is for the final run only.")
+    splits = c.parse_splits(p.parse_args().splits)
     df = pd.read_csv(c.OUTPUTS_DIR / "prepped.csv")
     rows = []
-    for split in ("val", "test"):
+    for split in splits:
         videos = [v.reset_index(drop=True) for _, v in df[df.split == split].groupby("video")]
         for name, policy in POLICIES.items():
             per_video = pd.DataFrame([c.video_results(v, policy(v)) for v in videos])
-            rows.append({"split": split, "method": name, **c.summarise(per_video)})
+            rows.append({"split": split, "method": name, **c.reward_settings(), **c.summarise(per_video)})
     out = pd.DataFrame(rows)
     out.to_csv(c.OUTPUTS_DIR / "baselines.csv", index=False)
     with pd.option_context("display.width", 200, "display.precision", 2):
         print(out.to_string(index=False))
-    for split in ("val", "test"):
+    for split in splits:
         s = out[out.split == split].set_index("method")["mean_return"]
         print(f"{split}: oracle headroom over always ResNet {s['oracle'] - s['always ResNet']:.2f}, "
               f"over call-on-claim {s['oracle'] - s['call-on-claim']:.2f} points per video")

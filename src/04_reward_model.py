@@ -14,6 +14,8 @@ Writes:
   outputs/reward_preds.csv  prepped.csv plus dhat (out-of-fold on val, final model on test)
   outputs/gain_dist.npz     out-of-fold val predictions sorted into 10 position bins (bin_0..bin_9)
 """
+import argparse
+
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import GradientBoostingRegressor
@@ -41,6 +43,10 @@ def report(name, part):
 
 
 def main():
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--splits", default="val",
+                   help="val, or val,test to also predict test with the final model (final run only)")
+    splits = c.parse_splits(p.parse_args().splits)
     df = pd.read_csv(c.OUTPUTS_DIR / "prepped.csv")
     val = df[df.split == "val"].reset_index(drop=True)
     test = df[df.split == "test"].reset_index(drop=True)
@@ -53,10 +59,12 @@ def main():
     val["dhat"] = oof
 
     final = make_model().fit(val[c.FEATURE_COLS], val["gain"])
-    test["dhat"] = final.predict(test[c.FEATURE_COLS])
-
     report("val (out-of-fold)", val)
-    report("test (final model)", test)
+    if "test" in splits:
+        test["dhat"] = final.predict(test[c.FEATURE_COLS])
+        report("test (final model)", test)
+    else:
+        test = test.iloc[:0]
     print("feature importance: " + ", ".join(
         f"{n} {w:.2f}" for n, w in sorted(zip(c.FEATURE_COLS, final.feature_importances_), key=lambda x: -x[1])))
 

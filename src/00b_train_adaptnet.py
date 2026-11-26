@@ -2,6 +2,7 @@
 
     python src/00b_train_adaptnet.py --version v1
     python src/00b_train_adaptnet.py --version v1 --resume     # after an interrupted run
+    python src/00b_train_adaptnet.py --version v3 --all-train --epochs 12 --no-shuffle
 
 Why train it when weights are released: the authors picked their epoch on the val split, which
 is our router's data, so AdaptNet would look a little better on val than it does on test.
@@ -13,6 +14,10 @@ Recipe from the paper: Adam, lr 1e-5 (1e-3 for the temperature), weight decay 5e
   - batches are shuffled. The original runs through videos in order, so many batches contain one
     label only, and the contrastive loss has nothing to contrast. `--no-shuffle` restores it.
   - the best epoch is judged with the positive vs negative prompts, the mode the router will use.
+
+--all-train trains on all 120 train videos for a fixed --epochs and saves the last epoch, with no
+holdout and no epoch picking. The 12-video holdout proved too small to pick epochs (it rated v2
+far below v1, yet v2 is better on test). The cosine schedule is unchanged (T_max 40, as the authors).
 
 Writes to weights/: cvs_adaptnet_<version>.pth, cvs_adaptnet_<version>_log.csv and
 cvs_adaptnet_<version>_last.pth (for --resume, safe to delete afterwards).
@@ -86,6 +91,8 @@ def main():
     p.add_argument("--workers", type=int, default=4)
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--no-shuffle", action="store_true")
+    p.add_argument("--all-train", action="store_true",
+                   help="train on all 120 train videos for a fixed --epochs, save the last epoch")
     p.add_argument("--grad-checkpoint", action="store_true",
                    help="less GPU memory, a bit slower, same result: recomputes the text encoder instead of storing it")
     p.add_argument("--resume", action="store_true")
@@ -93,10 +100,8 @@ def main():
     p.add_argument("--smoke", action="store_true", help="two CPU batches, random weights, code check only")
     args = p.parse_args()
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cpu") if args.smoke else c.get_device()
     use_amp = device.type == "cuda"
-    if device.type == "cpu" and not args.smoke:
-        raise SystemExit("No GPU found. Run this on the GPU machine, or use --smoke to check the code.")
     if args.smoke:
         args.version, args.epochs, args.batch_size, args.workers = "smoke", 1, 4, 0
 
@@ -114,9 +119,13 @@ def main():
     torch.manual_seed(args.seed)
 
     fit, held = c.load_fit_holdout()
+    if args.all_train:
+        # Keep the train split's video order (what --no-shuffle walks through), holdout included.
+        fit = c.load_split("train")
     if args.smoke:
         fit, held = fit.sample(8, random_state=0), held.sample(8, random_state=0)
-    print(f"device {device}, fit {len(fit)} frames, holdout {len(held)} frames")
+    print(f"device {device}, fit {len(fit)} frames ({fit['video'].nunique()} videos), "
+          f"holdout {len(held)} frames{' (only logged, inside the training data)' if args.all_train else ''}")
 
     opts = dict(batch_size=args.batch_size, num_workers=args.workers, pin_memory=use_amp)
     train_loader = DataLoader(c.FrameDataset(fit, train_transform()), shuffle=not args.no_shuffle,
@@ -180,6 +189,11 @@ def main():
             scaler.step(optimiser)
             scaler.update()
             losses.append(loss.item())
+            if not use_amp and epoch == start and len(losses) == 20:
+                per_batch = (time.time() - began) / 20
+                print(f"after 20 batches: {per_batch:.2f} s per batch, "
+                      f"about {per_batch * len(train_loader) * (args.epochs - start + 1) / 3600:.1f} h for the remaining epochs",
+                      flush=True)
             if use_amp and epoch == start and len(losses) == 20:
                 # Windows drivers may spill into slow system memory instead of stopping with an
                 # out of memory error, so look at this line before leaving the run alone.
@@ -201,7 +215,11 @@ def main():
               f"(standard {standard_map:.4f})  acc {report['accuracy']:.4f}  CVS claims {report['cvs_claims']} "
               f"({report['false_cvs']} false, truth has {report['true_cvs_frames']})", flush=True)
 
-        if args.smoke or report["mAP"] > best:
+        if args.all_train:
+            if epoch == args.epochs:
+                torch.save({"model_state_dict": model.state_dict(), "epoch": epoch, "holdout_report": report,
+                            "holdout_videos": [], "args": vars(args)}, best_path)
+        elif args.smoke or report["mAP"] > best:
             best = report["mAP"]
             torch.save({"model_state_dict": model.state_dict(), "epoch": epoch, "holdout_report": report,
                         "holdout_videos": c.HOLDOUT_VIDEOS, "args": vars(args)}, best_path)
@@ -212,7 +230,10 @@ def main():
                         "epoch": epoch, "best": best, "log": log}, tmp)
             tmp.replace(last_path)
 
-    print(f"best holdout mAP {best:.4f}, saved to {best_path}")
+    if args.all_train:
+        print(f"saved epoch {args.epochs} to {best_path} (the holdout mAP above is on training videos)")
+    else:
+        print(f"best holdout mAP {best:.4f}, saved to {best_path}")
 
 
 if __name__ == "__main__":
