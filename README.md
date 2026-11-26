@@ -71,7 +71,7 @@ Both train on 108 of the 120 train videos and pick the best epoch on the other 1
 
 ## Pipeline order
 
-Run in this order from the repository root. Steps 1 and 2 are written, the rest are placeholders.
+Run in this order from the repository root. All steps are written and have been run.
 
 1. `python src/00_train_resnet.py` trains ResNet18 and saves `weights/resnet18_cvs_<version>.pt`. Needs a GPU.
 2. `python src/00b_train_adaptnet.py` fine-tunes CVS-AdaptNet and saves `weights/cvs_adaptnet_<version>.pth`. Needs a GPU.

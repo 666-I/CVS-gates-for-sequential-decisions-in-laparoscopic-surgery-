@@ -95,18 +95,31 @@ preds.csv columns: split, video, frame_idx, N_v, y1, y2, y3, r1, r2, r3, a1, a2,
 - The two models see different views: ResNet the whole frame, AdaptNet the authors' centre crop.
 
 ## Current status
-- Written and checked on the Mac: `common.py`, `adaptnet.py`, `00_train_resnet.py`, `00b_train_adaptnet.py`. Labels were checked on the real annotation files, AdaptNet's layers, embeddings and loss against the authors' code. Training has only run on fake images on CPU. Nothing has run on a GPU or on real frames.
-- Not written yet: 01 to 05.
+Everything has run on the training PC (RTX 5070, Miniconda base env, torch 2.15 + CUDA 13.2). Results are in `docs/results/` (copies of the small CSVs and the figure from `outputs/`).
 
-### Next, on the training PC
-Commands are in README.md (written for bash, adapt them if this is Windows).
-1. Set up: install torch 2.7 or newer built for CUDA 12.8 or newer (older builds do not run on a 5070) and run the GPU check in README.md, then install requirements, clone CVS-AdaptNet, get the dataset and PeskaVLP (a zip with PeskaVLP.pth inside).
-2. `python src/common.py`. Every split must say [OK]. Stop if not.
-3. Run both trainers with `--smoke`. This is the first GPU run, so fix any CUDA problem here. Then delete `weights/*_smoke*`.
-4. `python src/00_train_resnet.py --version v1`. Look at mAP, and at CVS claims and false claims. If it never claims CVS, stop and tell the group.
-5. `python src/00b_train_adaptnet.py --version v1 --grad-checkpoint` (about 4 hours in the paper, `--resume` if interrupted). The "before training" mAP should be low (paper: 26.6 on test) and then climb. If it has not moved after a few epochs, stop and check. Read the memory and time line printed after 20 batches: Windows can spill into system memory and crawl instead of failing. If that happens or it runs out of memory, use `--batch-size 32` and note it here, since the loss depends on it.
-6. Copy both `_log.csv` files to `docs/training_logs/`, put the weights on the drive, update this section with the results, and push.
-- Do not load val or test during training, and do not tune anything on them.
+### Training (v1, batch 64, no batch-size change needed: peak 7.4 of 11.9 GB)
+- ResNet18 v1: best holdout mAP 0.400 (epoch 8). Overfits after that (loss keeps falling, mAP flat).
+- AdaptNet v1: holdout mAP 0.168 before training, best 0.392 (epoch 14), about 1.3 h. Logs in `docs/training_logs/`.
 
-### After that
-Write `01_predict.py`, run it on the training PC, then 02 and 03 (headroom check) before the reward model.
+### 01 predictions (val / test)
+- ResNet18: mAP 0.396 / 0.422, CVS claims 39 (14 false) / 33 (27 false).
+- AdaptNet: mAP 0.429 / 0.472, CVS claims 100 (61 false) / 72 (48 false).
+- AdaptNet ranks better but over-claims CVS at the 0.5 cut, so on its own it scores worse than ResNet.
+- Time per frame (batch 1, GPU compute): ResNet18 4.2 ms, AdaptNet 10.4 ms, so a call costs about 2.5x, not 4x.
+
+### 03 headroom (rho = 0.1, mean return per video)
+- val: always ResNet 140.2, call-on-claim 142.3, oracle 146.1. test: 97.9, 102.3, 106.1.
+- The oracle beats call-on-claim by only about 3.8 points per video, so the room for a learnt router is small.
+
+### 04 reward model
+- Weak. Out-of-fold val correlation with true gain 0.18 (MSE 3.83 vs 3.84 for predicting the mean); test 0.30.
+- It sees that ResNet's CVS claims are where gains are, but underestimates them (test: dhat 2.5 vs true 7.9 on claims).
+
+### 05 DP planner (test, mean per-video difference with 95% bootstrap CI over videos)
+- DP planner minus no-price: +1.00 [0.01, 2.42] at rho 0.05, +0.34 [0.00, 0.97] at 0.1, 0 at 0.2. The price helps a little, mainly when calls are scarce.
+- DP planner minus call-on-claim: -0.74 at 0.05, -1.49 at 0.1, -2.34 at 0.2 (all CIs below 0). The simple heuristic wins, because the reward model is too weak.
+- Share of gap closed is negative at every rho. The call-price curves in `call_price.png` behave as expected (falling with t and with b).
+
+### Next
+- The bottleneck is the reward model and AdaptNet's false CVS claims, not the planner. Options: compare with the released AdaptNet checkpoint, tune AdaptNet's threshold on val, give the reward model AdaptNet-free features that separate true from false ResNet claims. Any tuning must use val only.
+- The `.bat` helper scripts used on Windows live in `outputs/run/` (not in git). Python on the PC is `%USERPROFILE%\miniconda3\python.exe`.
