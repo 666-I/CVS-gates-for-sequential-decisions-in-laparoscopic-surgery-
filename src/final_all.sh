@@ -21,6 +21,7 @@ ARGS04="--model gbr200 --features base" src/final_run.sh main_gbr200 $main_preds
 ARGS04="--model split --features slim" src/final_run.sh main_split_slim $main_preds
 ARGS04="--extra-claims" src/final_run.sh main_extra_claims $main_preds
 CVS_MISSED_CVS_PENALTY=0 src/final_run.sh main_lambda0 $main_preds
+CVS_MISSED_CVS_PENALTY=0 ARGS04="--model gbr200 --features base" src/final_run.sh pc_repro $main_preds
 for m in v1b_e1 v1b_e3 r112; do
   src/final_run.sh cheap_$m outputs/cheap/$m/preds.csv
 done
