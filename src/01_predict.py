@@ -15,6 +15,10 @@ Writes outputs/preds.csv: one row per labelled frame with the columns in common.
 sorted by video then frame. r1..r3 are ResNet18 probabilities, a1..a3 are AdaptNet's
 positive vs negative prompt scores. Both are thresholded at 0.5 later, not here.
 
+Predictions run in full precision (float32) on every machine, so the PC (CUDA) and the Mac (MPS)
+give the same answers. Before this, the PC used mixed precision, and one val frame near a cut-off
+came out differently on the two machines. --mixed brings back mixed precision on CUDA.
+
 Also times one frame through each model (batch size 1, GPU compute only, after a warm-up)
 and writes outputs/timing.csv, to back up the 0.5 call cost.
 """
@@ -33,11 +37,11 @@ import common as c
 train_resnet = importlib.import_module("00_train_resnet")  # file name starts with a digit
 
 
-def time_per_frame(forward, example, device, warmup=20, runs=200):
+def time_per_frame(forward, example, device, amp, warmup=20, runs=200):
     """Median milliseconds for one frame through `forward`, GPU compute only."""
     x = example.unsqueeze(0).to(device)
     times = []
-    with torch.no_grad(), torch.autocast(device.type, enabled=device.type == "cuda"):
+    with torch.no_grad(), torch.autocast(device.type, enabled=amp):
         for i in range(warmup + runs):
             torch.cuda.synchronize()
             start = time.perf_counter()
@@ -59,6 +63,7 @@ def main():
     p.add_argument("--reuse-adaptnet", default=None,
                    help="copy a1..a3 from this preds.csv instead of running AdaptNet again")
     p.add_argument("--out", default="preds.csv", help="file name in outputs/")
+    p.add_argument("--mixed", action="store_true", help="mixed precision on CUDA (the old PC behaviour); default is full precision")
     args = p.parse_args()
 
     device = c.get_device()
@@ -79,18 +84,24 @@ def main():
         adapt_name = adapt_path.name
     print(f"loaded {resnet_path.name} (input {train_resnet.checkpoint_size(resnet_path)}) and {adapt_name}")
 
+    if not args.mixed:
+        # Full precision also means no TF32: on recent NVIDIA cards cuDNN uses it for convolutions by default.
+        torch.backends.cudnn.allow_tf32 = False
+        torch.backends.cuda.matmul.allow_tf32 = False
+    amp = args.mixed and device.type == "cuda"
+    print(f"precision: {'mixed (CUDA autocast)' if amp else 'full (float32)'}")
     opts = dict(batch_size=args.batch_size, num_workers=args.workers, pin_memory=device.type == "cuda")
     tables = []
     for split in ("val", "test"):
         df = c.load_split(split)
         r_probs, r_labels = train_resnet.predict(
-            resnet, DataLoader(c.FrameDataset(df, r_transform), **opts), device)
+            resnet, DataLoader(c.FrameDataset(df, r_transform), **opts), device, amp=amp)
         if args.reuse_adaptnet:
             a_probs = old.loc[list(zip(df["split"], df["video"], df["frame_idx"]))].to_numpy()
             a_standard, a_labels = None, r_labels
         else:
             a_probs, a_standard, a_labels = adaptnet.predict(
-                adapt, DataLoader(c.FrameDataset(df, adaptnet.EVAL_TRANSFORM), **opts), text, device)
+                adapt, DataLoader(c.FrameDataset(df, adaptnet.EVAL_TRANSFORM), **opts), text, device, amp=amp)
         # Both loaders run in df order, so the labels must line up with the table.
         assert (r_labels == df[c.Y_COLS].to_numpy()).all() and (a_labels == r_labels).all()
         df[c.R_COLS], df[c.A_COLS] = r_probs, a_probs
@@ -116,8 +127,8 @@ def main():
         return
     example = c.FrameDataset(c.load_split("val").head(1), r_transform)[0][0]
     example_a = c.FrameDataset(c.load_split("val").head(1), adaptnet.EVAL_TRANSFORM)[0][0]
-    ms_r = time_per_frame(resnet, example, device)
-    ms_a = time_per_frame(adapt.encode_image, example_a, device)
+    ms_r = time_per_frame(resnet, example, device, amp)
+    ms_a = time_per_frame(adapt.encode_image, example_a, device, amp)
     pd.DataFrame([{"model": "ResNet18", "ms_per_frame": ms_r}, {"model": "AdaptNet", "ms_per_frame": ms_a},
                   {"model": "ratio", "ms_per_frame": ms_a / ms_r}]).to_csv(c.OUTPUTS_DIR / "timing.csv", index=False)
     print(f"time per frame: ResNet18 {ms_r:.2f} ms, AdaptNet {ms_a:.2f} ms, ratio {ms_a / ms_r:.1f}x")

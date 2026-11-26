@@ -143,8 +143,10 @@ def embed_eval_prompts(model, tokenizer, device):
 
 
 @torch.no_grad()
-def predict(model, loader, text, device):
+def predict(model, loader, text, device, amp=None):
     """Scores for every frame in the loader, in order.
+
+    amp=None uses mixed precision on CUDA only (as during training); amp=False forces full precision.
 
     Returns (posneg, standard, labels):
       posneg    softmax of positive vs negative prompt. Above 0.5 means the frame is closer to
@@ -153,11 +155,13 @@ def predict(model, loader, text, device):
                 ranking, not as calibrated probabilities.
       standard  sigmoid of the positive similarity. Fine for mAP, but 0.5 means nothing here.
     """
+    if amp is None:
+        amp = device.type == "cuda"
     model.eval()
     pos, neg = text
     posneg, standard, labels = [], [], []
     for x, y, _ in loader:
-        with torch.autocast(device.type, enabled=device.type == "cuda"):
+        with torch.autocast(device.type, enabled=amp):
             img = model.encode_image(x.to(device, non_blocking=True))
         with torch.autocast(device.type, enabled=False):
             s_pos, s_neg = img @ pos.T, img @ neg.T

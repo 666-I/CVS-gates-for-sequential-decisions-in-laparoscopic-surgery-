@@ -74,12 +74,17 @@ def load_resnet(path, device="cpu"):
 
 
 @torch.no_grad()
-def predict(model, loader, device):
-    """Probabilities for every frame in the loader, in order, plus the labels."""
+def predict(model, loader, device, amp=None):
+    """Probabilities for every frame in the loader, in order, plus the labels.
+
+    amp=None uses mixed precision on CUDA only (as during training); amp=False forces full precision.
+    """
+    if amp is None:
+        amp = device.type == "cuda"
     model.eval()
     probs, labels = [], []
     for x, y, _ in loader:
-        with torch.autocast(device.type, enabled=device.type == "cuda"):
+        with torch.autocast(device.type, enabled=amp):
             logits = model(x.to(device, non_blocking=True))
         probs.append(logits.float().sigmoid().cpu().numpy())
         labels.append(y.numpy())

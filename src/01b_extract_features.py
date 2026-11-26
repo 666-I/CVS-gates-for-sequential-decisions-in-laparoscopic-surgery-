@@ -29,11 +29,16 @@ def main():
     p.add_argument("--adaptnet-weights", default=None, help="AdaptNet checkpoint instead of the versioned one")
     p.add_argument("--batch-size", type=int, default=64)
     p.add_argument("--workers", type=int, default=4)
+    p.add_argument("--mixed", action="store_true", help="mixed precision on CUDA; default is full precision")
     args = p.parse_args()
 
     device = c.get_device()
     path = (c.WEIGHTS_DIR / f"cvs_adaptnet_{args.version}.pth" if args.adaptnet_weights is None
             else c.Path(args.adaptnet_weights))
+    if not args.mixed:
+        # Full precision also means no TF32: on recent NVIDIA cards cuDNN uses it for convolutions by default.
+        torch.backends.cudnn.allow_tf32 = False
+        torch.backends.cuda.matmul.allow_tf32 = False
     model = adaptnet.AdaptNet()
     adaptnet.load_weights(model, path, need_logit_scale=True)
     model = model.to(device).eval()
@@ -48,7 +53,7 @@ def main():
         embs, posneg = [], []
         with torch.no_grad():
             for x, _, _ in loader:
-                with torch.autocast(device.type, enabled=device.type == "cuda"):
+                with torch.autocast(device.type, enabled=args.mixed and device.type == "cuda"):
                     img = model.encode_image(x.to(device, non_blocking=True))
                 s_pos, s_neg = img @ pos.T, img @ neg.T
                 embs.append(img.cpu().numpy().astype(np.float16))
