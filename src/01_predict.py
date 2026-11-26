@@ -1,6 +1,13 @@
 """Run ResNet18 and CVS-AdaptNet once on every val and test frame. Needs a GPU.
 
     python src/01_predict.py --version v1
+    python src/01_predict.py --version v1 --adaptnet-weights weights/CVSAdaptNet_released.pth --out released/preds.csv
+
+By default both models are ours: resnet18_cvs_<version>.pt and cvs_adaptnet_<version>.pth.
+--adaptnet-weights swaps in another AdaptNet checkpoint, e.g. the authors' released one
+(weights/CVSAdaptNet_released.pth, link in the CVS-AdaptNet README), used as a comparison. It
+reproduces their paper on our test split (0.572 mAP), but its epoch was picked by the authors on
+val, so its val predictions are slightly flattering; test is unaffected.
 
 Writes outputs/preds.csv: one row per labelled frame with the columns in common.PRED_COLS,
 sorted by video then frame. r1..r3 are ResNet18 probabilities, a1..a3 are AdaptNet's
@@ -44,11 +51,15 @@ def main():
     p.add_argument("--version", default="v1", help="weights version for both models")
     p.add_argument("--batch-size", type=int, default=64)
     p.add_argument("--workers", type=int, default=4)
+    p.add_argument("--adaptnet-weights", default=None,
+                   help="AdaptNet checkpoint instead of cvs_adaptnet_<version>.pth, e.g. weights/CVSAdaptNet_released.pth")
+    p.add_argument("--out", default="preds.csv", help="file name in outputs/")
     args = p.parse_args()
 
     device = torch.device("cuda")
     resnet_path = c.WEIGHTS_DIR / f"resnet18_cvs_{args.version}.pt"
-    adapt_path = c.WEIGHTS_DIR / f"cvs_adaptnet_{args.version}.pth"
+    adapt_path = (c.WEIGHTS_DIR / f"cvs_adaptnet_{args.version}.pth" if args.adaptnet_weights is None
+                  else c.Path(args.adaptnet_weights))
     resnet = train_resnet.load_resnet(resnet_path, device)
     adapt = adaptnet.AdaptNet()
     adaptnet.load_weights(adapt, adapt_path, need_logit_scale=True)
@@ -62,7 +73,7 @@ def main():
         df = c.load_split(split)
         r_probs, r_labels = train_resnet.predict(
             resnet, DataLoader(c.FrameDataset(df, train_resnet.EVAL_TRANSFORM), **opts), device)
-        a_probs, _, a_labels = adaptnet.predict(
+        a_probs, a_standard, a_labels = adaptnet.predict(
             adapt, DataLoader(c.FrameDataset(df, adaptnet.EVAL_TRANSFORM), **opts), text, device)
         # Both loaders run in df order, so the labels must line up with the table.
         assert (r_labels == df[c.Y_COLS].to_numpy()).all() and (a_labels == r_labels).all()
@@ -73,11 +84,12 @@ def main():
             print(f"{split} {name:8s}  mAP {rep['mAP']:.3f}  acc {rep['accuracy']:.3f}  "
                   f"CVS claims {rep['cvs_claims']} ({rep['false_cvs']} false, truth has {rep['true_cvs_frames']})  "
                   f"mean score {rep['mean_score']:.3f}")
+        print(f"{split} AdaptNet standard-mode mAP {c.prediction_report(df[c.Y_COLS], a_standard)['mAP']:.3f}")
 
     preds = pd.concat(tables).sort_values(["split", "video", "frame_idx"]).reset_index(drop=True)
     c.OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
-    preds.to_csv(c.OUTPUTS_DIR / "preds.csv", index=False)
-    print(f"wrote {len(preds)} rows to {c.OUTPUTS_DIR / 'preds.csv'}")
+    preds.to_csv(c.OUTPUTS_DIR / args.out, index=False)
+    print(f"wrote {len(preds)} rows to {c.OUTPUTS_DIR / args.out}")
 
     example = c.FrameDataset(c.load_split("val").head(1), train_resnet.EVAL_TRANSFORM)[0][0]
     example_a = c.FrameDataset(c.load_split("val").head(1), adaptnet.EVAL_TRANSFORM)[0][0]

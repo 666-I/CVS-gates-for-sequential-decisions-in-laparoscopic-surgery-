@@ -69,6 +69,15 @@ Both train on 108 of the 120 train videos and pick the best epoch on the other 1
 
 `--grad-checkpoint` is there because the 5070 has 12 GB (8 GB on laptops) and the paper's GPU has 24 GB. It saves memory without changing the maths. After 20 batches the script prints peak memory and an estimated time. On Windows a full card can silently spill into system memory and crawl, so check that line. If memory is at the limit or the time estimate is far too long, stop and use `--batch-size 32`, and note it in the report, since the contrastive loss depends on the batch size.
 
+## Optional: the authors' released AdaptNet
+
+Used only as a comparison. Download `CVSAdaptNet.pth` from the link in `external/CVS-AdaptNet/README.md`, save it as `weights/CVSAdaptNet_released.pth`, then:
+
+```bash
+python src/01_predict.py --version v1 --adaptnet-weights weights/CVSAdaptNet_released.pth --out released/preds.csv
+CVS_OUTPUTS_DIR=outputs/released python src/02_prep.py   # and the same for 03, 04 and 05
+```
+
 ## Pipeline order
 
 Run in this order from the repository root. All steps are written and have been run.
@@ -76,7 +85,7 @@ Run in this order from the repository root. All steps are written and have been 
 1. `python src/00_train_resnet.py` trains ResNet18 and saves `weights/resnet18_cvs_<version>.pt`. Needs a GPU.
 2. `python src/00b_train_adaptnet.py` fine-tunes CVS-AdaptNet and saves `weights/cvs_adaptnet_<version>.pth`. Needs a GPU.
 3. `python src/01_predict.py` runs both models on the validation and test splits using a GPU and writes `outputs/preds.csv`.
-4. `python src/02_prep.py` adds gain labels and state features and writes `outputs/prepped.csv`.
+4. `python src/02_prep.py` picks AdaptNet's cut-offs on val, adds gain labels and state features, and writes `outputs/prepped.csv` and `outputs/thresholds.csv`.
 5. `python src/03_baselines.py` evaluates the baselines and oracle to measure routing headroom.
 6. `python src/04_reward_model.py` fits the five-fold reward model and writes the 10-bin gain distribution to `outputs/gain_dist.npz`.
 7. `python src/05_dp_planner.py` builds the value table, evaluates the policy, and writes the final method results to `outputs/results.csv`.

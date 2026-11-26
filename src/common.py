@@ -159,6 +159,7 @@ def prediction_report(truth, probs):
 # ---------- Router: features, simulation, evaluation ----------
 FEATURE_COLS = ["r1", "r2", "r3", "r_cvs", "r_min", "pos", "frames_left", "recent_claims"]
 N_BINS = 10
+N_FOLDS = 5  # GroupKFold by video on val, shared by the cut-offs and the reward model
 RECENT = 5  # recent_claims looks back this many frames
 
 

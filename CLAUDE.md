@@ -95,31 +95,48 @@ preds.csv columns: split, video, frame_idx, N_v, y1, y2, y3, r1, r2, r3, a1, a2,
 - The two models see different views: ResNet the whole frame, AdaptNet the authors' centre crop.
 
 ## Current status
-Everything has run on the training PC (RTX 5070, Miniconda base env, torch 2.15 + CUDA 13.2). Results are in `docs/results/` (copies of the small CSVs and the figure from `outputs/`).
+Everything has run on the training PC (RTX 5070, Miniconda base env, torch 2.15 + CUDA 13.2). Results are in `docs/results/`.
 
-### Training (v1, batch 64, no batch-size change needed: peak 7.4 of 11.9 GB)
-- ResNet18 v1: best holdout mAP 0.400 (epoch 8). Overfits after that (loss keeps falling, mAP flat).
-- AdaptNet v1: holdout mAP 0.168 before training, best 0.392 (epoch 14), about 1.3 h. Logs in `docs/training_logs/`.
+### Main setup (agreed with the group)
+- Cheap model: ResNet18 v1, cut at 0.5 (trained with BCE, so 0.5 is meaningful).
+- Expensive model: our AdaptNet v1, with per-criterion cut-offs chosen on val (see 02 below).
+- Goal: show that the decider's logic works, so the key comparison is DP planner vs no-price.
 
-### 01 predictions (val / test)
-- ResNet18: mAP 0.396 / 0.422, CVS claims 39 (14 false) / 33 (27 false).
-- AdaptNet: mAP 0.429 / 0.472, CVS claims 100 (61 false) / 72 (48 false).
-- AdaptNet ranks better but over-claims CVS at the 0.5 cut, so on its own it scores worse than ResNet.
-- Time per frame (batch 1, GPU compute): ResNet18 4.2 ms, AdaptNet 10.4 ms, so a call costs about 2.5x, not 4x.
+### Training (batch 64, peak 7.4 of 11.9 GB, logs in `docs/training_logs/`)
+- ResNet18 v1: best holdout mAP 0.400 (epoch 8), overfits after that.
+- AdaptNet v1 (shuffled batches): best holdout mAP 0.392 (epoch 14), about 1.3 h.
+- AdaptNet v2 (`--no-shuffle`, the authors' order): best holdout mAP 0.285 (epoch 10), but better on test (below). The 12-video holdout is too small to pick epochs or compare models reliably.
 
-### 03 headroom (rho = 0.1, mean return per video)
-- val: always ResNet 140.2, call-on-claim 142.3, oracle 146.1. test: 97.9, 102.3, 106.1.
-- The oracle beats call-on-claim by only about 3.8 points per video, so the room for a learnt router is small.
+### AdaptNet versions
+| | test pos/neg mAP | test standard mAP | val mAP |
+|---|---|---|---|
+| ResNet18 v1 | 0.422 | | 0.396 |
+| AdaptNet v1 | 0.472 | | 0.429 |
+| AdaptNet v2 | 0.504 | 0.545 | 0.429 |
+| Released (authors) | 0.572 | 0.575 | 0.518 |
+- The released checkpoint reproduces the paper (56.8 / 57.6) through our `01_predict.py`, so our evaluation is right and the gap is in our fine-tuning (shuffling explains part of it).
+- The authors picked their epoch on val, which is our router's data, so the released model is only used as a comparison (`outputs/released/`).
+- Time per frame (batch 1, GPU compute): ResNet18 4.2 ms, AdaptNet 10.4 ms, about 2.5x.
 
-### 04 reward model
-- Weak. Out-of-fold val correlation with true gain 0.18 (MSE 3.83 vs 3.84 for predicting the mean); test 0.30.
-- It sees that ResNet's CVS claims are where gains are, but underestimates them (test: dhat 2.5 vs true 7.9 on claims).
+### 02 AdaptNet cut-offs
+- AdaptNet's pos/neg scores all sit between about 0.43 and 0.56, so 0.5 is not a meaningful cut: at 0.5 the released model claims CVS on 796 test frames (673 false).
+- `02_prep.py` picks one cut-off per criterion on val, for that criterion's accuracy, inside the same 5 video folds as the reward model. Test uses cut-offs from all of val. Saved in `thresholds.csv`.
+- With them, AdaptNet v1 alone beats ResNet18 on test: mean score 2.32 vs 2.18, 14 CVS claims (6 false) vs 33 (27 false).
+- Do not choose cut-offs by the router's reward: the -10 penalty makes "never claim CVS" the best answer.
+- `--calibrate-resnet` does the same for ResNet. It sets C1 to 0.976, so ResNet almost never claims CVS and the router has nothing left to do. Not used. Worth discussing: the reward favours a model that never detects CVS.
 
-### 05 DP planner (test, mean per-video difference with 95% bootstrap CI over videos)
-- DP planner minus no-price: +1.00 [0.01, 2.42] at rho 0.05, +0.34 [0.00, 0.97] at 0.1, 0 at 0.2. The price helps a little, mainly when calls are scarce.
-- DP planner minus call-on-claim: -0.74 at 0.05, -1.49 at 0.1, -2.34 at 0.2 (all CIs below 0). The simple heuristic wins, because the reward model is too weak.
-- Share of gap closed is negative at every rho. The call-price curves in `call_price.png` behave as expected (falling with t and with b).
+### Results, main setup (test, mean per-video difference, 95% bootstrap CI over videos)
+| rho | DP planner - no-price | DP planner - call-on-claim |
+|---|---|---|
+| 0.05 | +1.24 [0.22, 2.48] | -0.11 [-0.34, 0.09] |
+| 0.1 | +0.35 [-0.60, 1.39] | -0.96 [-2.39, 0.01] |
+| 0.2 | -0.01 [-0.04, 0.00] | -3.21 [-8.82, -0.07] |
+- The price clearly helps when calls are scarce (rho 0.05), where the planner also ties call-on-claim. With more calls, saving them stops mattering.
+- v2 and the released AdaptNet give the same picture: the planner beats no-price at rho 0.05 (+2.06 and +1.21, CIs above 0) but loses more to call-on-claim. See `docs/results/adaptnet_comparison.csv`.
+- Why call-on-claim is hard to beat: almost all value comes from catching ResNet's false CVS claims, which that rule targets directly; the oracle only beats it by about 2.7 points per video.
+- The reward model is weak (test correlation with true gain about 0.35) and underestimates gains on ResNet's claims, because ResNet's claims are false far more often on test (27 of 33) than on val (14 of 39).
 
 ### Next
-- The bottleneck is the reward model and AdaptNet's false CVS claims, not the planner. Options: compare with the released AdaptNet checkpoint, tune AdaptNet's threshold on val, give the reward model AdaptNet-free features that separate true from false ResNet claims. Any tuning must use val only.
+- Possible reward-model improvements: probability-based expected gain as an extra feature, features that separate risky from safe ResNet claims. Any tuning on val only.
+- If AdaptNet is retrained again: train on all 120 train videos for a fixed number of epochs instead of picking the epoch on 12 videos.
 - The `.bat` helper scripts used on Windows live in `outputs/run/` (not in git). Python on the PC is `%USERPROFILE%\miniconda3\python.exe`.

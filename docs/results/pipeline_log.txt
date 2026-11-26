@@ -1,133 +1,114 @@
-Collecting matplotlib
-  Downloading matplotlib-3.11.2-cp313-cp313-win_amd64.whl.metadata (80 kB)
-Collecting contourpy>=1.0.1 (from matplotlib)
-  Downloading contourpy-1.4.0-cp313-cp313-win_amd64.whl.metadata (3.8 kB)
-Collecting cycler>=0.10 (from matplotlib)
-  Using cached cycler-0.12.1-py3-none-any.whl.metadata (3.8 kB)
-Collecting fonttools>=4.28.2 (from matplotlib)
-  Downloading fonttools-4.69.1-cp313-cp313-win_amd64.whl.metadata (150 kB)
-Collecting kiwisolver>=1.3.1 (from matplotlib)
-  Downloading kiwisolver-1.5.1-cp313-cp313-win_amd64.whl.metadata (5.2 kB)
-Requirement already satisfied: numpy>=1.25 in c:\users\super\miniconda3\lib\site-packages (from matplotlib) (2.4.2)
-Requirement already satisfied: packaging>=20.0 in c:\users\super\miniconda3\lib\site-packages (from matplotlib) (25.0)
-Requirement already satisfied: pillow>=9 in c:\users\super\miniconda3\lib\site-packages (from matplotlib) (13.0.0)
-Collecting pyparsing>=3 (from matplotlib)
-  Using cached pyparsing-3.3.3-py3-none-any.whl.metadata (5.9 kB)
-Requirement already satisfied: python-dateutil>=2.7 in c:\users\super\miniconda3\lib\site-packages (from matplotlib) (4.0.0)
-Requirement already satisfied: tzdata in c:\users\super\miniconda3\lib\site-packages (from python-dateutil>=2.7->matplotlib) (2026.6)
-Downloading matplotlib-3.11.2-cp313-cp313-win_amd64.whl (9.3 MB)
-   ---------------------------------------- 9.3/9.3 MB 76.2 MB/s  0:00:00
-Downloading contourpy-1.4.0-cp313-cp313-win_amd64.whl (234 kB)
-Using cached cycler-0.12.1-py3-none-any.whl (8.3 kB)
-Downloading fonttools-4.69.1-cp313-cp313-win_amd64.whl (3.0 MB)
-   ---------------------------------------- 3.0/3.0 MB 52.7 MB/s  0:00:00
-Downloading kiwisolver-1.5.1-cp313-cp313-win_amd64.whl (70 kB)
-Using cached pyparsing-3.3.3-py3-none-any.whl (126 kB)
-Installing collected packages: pyparsing, kiwisolver, fonttools, cycler, contourpy, matplotlib
-  WARNING: The scripts fonttools.exe, pyftmerge.exe, pyftsubset.exe and ttx.exe are installed in 'C:\Users\super\miniconda3\Scripts' which is not on PATH.
-  Consider adding this directory to PATH or, if you prefer to suppress this warning, use --no-warn-script-location.
-
-Successfully installed contourpy-1.4.0 cycler-0.12.1 fonttools-4.69.1 kiwisolver-1.5.1 matplotlib-3.11.2 pyparsing-3.3.3
+######## outputs 
+AdaptNet cut-offs:
+      used_for     a1     a2     a3
+    val fold 0 0.5142 0.5047 0.5012
+    val fold 1 0.5140 0.5002 0.5092
+    val fold 2 0.5058 0.5013 0.5072
+    val fold 3 0.5074 0.5122 0.4976
+    val fold 4 0.5180 0.5141 0.5071
+test (all val) 0.5142 0.5048 0.5072
 wrote 4130 rows to C:\Users\super\Documents\GitHub\CVS-gates-for-sequential-decisions-in-laparoscopic-surgery-\outputs\prepped.csv
 
+test: AdaptNet with these cut-offs: accuracy 0.785, CVS claims 14 (6 false), mean score 2.323 (ResNet 2.177)
 test: 40 videos, 1799 frames, ResNet claims CVS on 33 frames
-  true gain values (gain: frames): -13: 2, -12: 12, -11: 9, -10: 8, -9: 11, -8: 3, -3: 2, -2: 16, -1: 213, 0: 1269, 1: 180, 2: 39, 3: 11, 9: 2, 10: 2, 11: 12, 12: 4, 13: 4
-  frames where calling beats the 0.5 fee: 254, mean gain -0.090
-  mean gain when ResNet claims CVS: 7.939, otherwise -0.240
-  mean gain by position bin: 0.06 -0.20 -0.24 -0.45 -0.14 -0.26 -0.21 0.51 -0.15 0.21
+  true gain values (gain: frames): -11: 1, -10: 2, -9: 1, -8: 2, -3: 3, -2: 22, -1: 178, 0: 1359, 1: 173, 2: 28, 3: 3, 9: 4, 11: 8, 12: 7, 13: 8
+  frames where calling beats the 0.5 fee: 231, mean gain 0.146
+  mean gain when ResNet claims CVS: 9.121, otherwise -0.022
+  mean gain by position bin: 0.18 0.08 0.07 0.00 -0.06 0.03 0.21 0.55 0.12 0.28
 
+val: AdaptNet with these cut-offs: accuracy 0.843, CVS claims 17 (10 false), mean score 2.487 (ResNet 2.466)
 val: 41 videos, 2331 frames, ResNet claims CVS on 39 frames
-  true gain values (gain: frames): -13: 12, -12: 10, -11: 14, -10: 4, -9: 17, -8: 1, -3: 3, -2: 27, -1: 178, 0: 1762, 1: 256, 2: 31, 3: 5, 9: 2, 10: 3, 11: 4, 13: 2
-  frames where calling beats the 0.5 fee: 303, mean gain -0.181
-  mean gain when ResNet claims CVS: 2.590, otherwise -0.228
-  mean gain by position bin: -0.28 -0.23 -0.15 -0.29 -0.16 -0.22 -0.07 -0.31 -0.12 0.04
+  true gain values (gain: frames): -13: 2, -12: 3, -11: 2, -9: 2, -3: 7, -2: 38, -1: 181, 0: 1819, 1: 238, 2: 26, 9: 3, 10: 2, 11: 6, 13: 2
+  frames where calling beats the 0.5 fee: 277, mean gain 0.021
+  mean gain when ResNet claims CVS: 2.590, otherwise -0.023
+  mean gain by position bin: 0.18 0.10 -0.06 0.12 -0.03 -0.02 -0.07 -0.02 0.01 -0.02
 split                      method  mean_return  ci_low  ci_high  false_cvs  calls  budget  videos
   val               always ResNet       140.20   85.54   205.76         14      0     238      41
-  val always AdaptNet (no budget)       101.50   54.18   160.34         61   2331     238      41
-  val               call-on-claim       142.32   87.20   208.32          3     36     238      41
-  val                      oracle       146.11   89.78   213.40          3    195     238      41
+  val always AdaptNet (no budget)       112.96   66.11   170.16         10   2331     238      41
+  val               call-on-claim       142.37   87.50   208.28          1     36     238      41
+  val                      oracle       146.01   90.01   213.21          1    177     238      41
  test               always ResNet        97.90   67.12   133.93         27      0     184      40
- test always AdaptNet (no budget)        71.36   48.40    98.30         48   1799     184      40
- test               call-on-claim       102.31   72.00   137.98          9     25     184      40
- test                      oracle       106.06   75.12   142.25          8    145     184      40
-val: oracle headroom over always ResNet 5.91, over call-on-claim 3.79 points per video
-test: oracle headroom over always ResNet 8.16, over call-on-claim 3.75 points per video
-val (out-of-fold): correlation 0.184, MSE 3.830 (predicting the mean: 3.839)
-  top 5% by dhat: mean dhat 1.30, mean true gain 0.87, ResNet claims CVS on 19% of them
-  ResNet claim=0: mean dhat -0.21, mean true gain -0.23
-  ResNet claim=1: mean dhat 1.73, mean true gain 2.59
-test (final model): correlation 0.296, MSE 4.515 (predicting the mean: 4.902)
-  top 5% by dhat: mean dhat 1.37, mean true gain 2.38, ResNet claims CVS on 30% of them
-  ResNet claim=0: mean dhat -0.33, mean true gain -0.24
-  ResNet claim=1: mean dhat 2.47, mean true gain 7.94
-feature importance: r_min 0.23, r3 0.20, r2 0.16, pos 0.13, r1 0.12, frames_left 0.08, recent_claims 0.04, r_cvs 0.03
+ test always AdaptNet (no budget)        81.99   57.04   111.08          6   1799     184      40
+ test               call-on-claim       102.66   72.29   138.40          8     25     184      40
+ test                      oracle       105.35   74.54   141.40          8    132     184      40
+val: oracle headroom over always ResNet 5.82, over call-on-claim 3.65 points per video
+test: oracle headroom over always ResNet 7.45, over call-on-claim 2.69 points per video
+val (out-of-fold): correlation 0.245, MSE 1.450 (predicting the mean: 1.466)
+  top 5% by dhat: mean dhat 1.68, mean true gain 0.88, ResNet claims CVS on 30% of them
+  ResNet claim=0: mean dhat -0.02, mean true gain -0.02
+  ResNet claim=1: mean dhat 2.65, mean true gain 2.59
+test (final model): correlation 0.345, MSE 2.361 (predicting the mean: 2.640)
+  top 5% by dhat: mean dhat 1.49, mean true gain 2.12, ResNet claims CVS on 27% of them
+  ResNet claim=0: mean dhat -0.08, mean true gain -0.02
+  ResNet claim=1: mean dhat 2.52, mean true gain 9.12
+feature importance: r_min 0.45, r2 0.12, r3 0.12, r1 0.11, r_cvs 0.06, recent_claims 0.05, frames_left 0.04, pos 0.04
 gain distribution (out-of-fold dhat on val) per bin: frames / mean / share above 0.5
-  bin 0:  250 /  -0.32 / 5.6%
-  bin 1:  234 /  -0.14 / 14.5%
-  bin 2:  238 /  -0.10 / 13.0%
-  bin 3:  226 /  -0.19 / 1.3%
-  bin 4:  233 /  -0.15 / 2.1%
-  bin 5:  237 /  -0.10 / 3.8%
-  bin 6:  230 /  -0.20 / 2.6%
-  bin 7:  234 /  -0.29 / 2.6%
-  bin 8:  238 /  -0.15 / 6.3%
-  bin 9:  211 /  -0.13 / 6.6%
+  bin 0:  250 /   0.13 / 10.0%
+  bin 1:  234 /   0.03 / 10.3%
+  bin 2:  238 /   0.03 / 5.9%
+  bin 3:  226 /   0.00 / 3.5%
+  bin 4:  233 /   0.06 / 6.4%
+  bin 5:  237 /   0.07 / 5.9%
+  bin 6:  230 /   0.02 / 5.2%
+  bin 7:  234 /  -0.01 / 4.7%
+  bin 8:  238 /  -0.00 / 5.9%
+  bin 9:  211 /  -0.12 / 4.3%
 split  rho        method  mean_return  ci_low  ci_high  false_cvs  calls  budget  share_of_gap_closed
   val 0.05 always ResNet       140.20   85.54   205.76         14      0     123                  NaN
-  val 0.05 call-on-claim       142.57   87.32   208.55          3     25     123                  NaN
-  val 0.05      no-price       141.15   86.00   207.09          9     80     123                  NaN
-  val 0.05    DP planner       141.55   86.28   207.83          8     71     123                -0.44
-  val 0.05        oracle       144.91   88.98   211.68          3    113     123                  NaN
+  val 0.05 call-on-claim       142.91   88.01   208.81          1     25     123                  NaN
+  val 0.05      no-price       142.18   87.12   208.28          6     71     123                  NaN
+  val 0.05    DP planner       142.52   87.53   208.54          4     55     123                -0.18
+  val 0.05        oracle       145.05   89.34   211.88          1    108     123                  NaN
   val 0.10 always ResNet       140.20   85.54   205.76         14      0     238                  NaN
-  val 0.10 call-on-claim       142.32   87.20   208.32          3     36     238                  NaN
-  val 0.10      no-price       141.04   86.11   206.92          8    111     238                  NaN
-  val 0.10    DP planner       141.18   86.11   207.33          8    107     238                -0.30
-  val 0.10        oracle       146.11   89.78   213.40          3    195     238                  NaN
+  val 0.10 call-on-claim       142.37   87.50   208.28          1     36     238                  NaN
+  val 0.10      no-price       142.66   87.89   208.36          2    108     238                  NaN
+  val 0.10    DP planner       142.87   87.89   208.78          1     97     238                 0.14
+  val 0.10        oracle       146.01   90.01   213.21          1    177     238                  NaN
   val 0.20 always ResNet       140.20   85.54   205.76         14      0     464                  NaN
-  val 0.20 call-on-claim       142.18   87.01   208.29          3     39     464                  NaN
-  val 0.20      no-price       141.01   86.21   206.93          7    137     464                  NaN
-  val 0.20    DP planner       141.01   86.21   206.93          7    137     464                -0.24
-  val 0.20        oracle       147.11   90.54   214.79          3    271     464                  NaN
+  val 0.20 call-on-claim       142.18   87.17   208.22          1     39     464                  NaN
+  val 0.20      no-price       141.83   87.34   207.49          1    132     464                  NaN
+  val 0.20    DP planner       141.79   87.28   207.46          1    131     464                -0.08
+  val 0.20        oracle       146.93   90.72   214.46          1    248     464                  NaN
  test 0.05 always ResNet        97.90   67.12   133.93         27      0      96                  NaN
- test 0.05 call-on-claim       100.95   70.74   136.44         14     20      96                  NaN
- test 0.05      no-price        99.21   69.05   134.71         19     49      96                  NaN
- test 0.05    DP planner       100.21   70.14   135.69         16     39      96                -0.28
- test 0.05        oracle       103.60   72.96   139.49         13     84      96                  NaN
+ test 0.05 call-on-claim       101.22   71.12   136.63         13     20      96                  NaN
+ test 0.05      no-price        99.88   69.66   135.36         17     52      96                  NaN
+ test 0.05    DP planner       101.11   71.01   136.51         13     31      96                -0.06
+ test 0.05        oracle       103.21   72.64   139.09         13     81      96                  NaN
  test 0.10 always ResNet        97.90   67.12   133.93         27      0     184                  NaN
- test 0.10 call-on-claim       102.31   72.00   137.98          9     25     184                  NaN
- test 0.10      no-price       100.49   70.36   136.00         14     61     184                  NaN
- test 0.10    DP planner       100.83   70.87   136.14         13     60     184                -0.40
- test 0.10        oracle       106.06   75.12   142.25          8    145     184                  NaN
+ test 0.10 call-on-claim       102.66   72.29   138.40          8     25     184                  NaN
+ test 0.10      no-price       101.35   70.89   137.04         11     68     184                  NaN
+ test 0.10    DP planner       101.70   71.47   137.38         10     58     184                -0.36
+ test 0.10        oracle       105.35   74.54   141.40          8    132     184                  NaN
  test 0.20 always ResNet        97.90   67.12   133.93         27      0     360                  NaN
- test 0.20 call-on-claim       104.04   73.42   140.00          3     33     360                  NaN
- test 0.20      no-price       101.70   71.55   137.31         10     66     360                  NaN
- test 0.20    DP planner       101.70   71.55   137.31         10     66     360                -0.56
- test 0.20        oracle       108.19   76.94   144.68          3    209     360                  NaN
+ test 0.20 call-on-claim       105.01   74.15   141.09          0     33     360                  NaN
+ test 0.20      no-price       101.81   71.42   137.54          9     73     360                  NaN
+ test 0.20    DP planner       101.80   71.40   137.54          9     72     360                -1.01
+ test 0.20        oracle       108.19   76.79   144.70          0    187     360                  NaN
 
 split  rho                 comparison  mean_diff  ci_low  ci_high  videos_better  videos_worse
-  val 0.05      DP planner - no-price       0.40   -0.07     1.11              3             2
-  val 0.05 DP planner - call-on-claim      -1.02   -2.61     0.21              6             8
-  val 0.05   no-price - call-on-claim      -1.43   -3.04    -0.15              6             9
-  val 0.05     oracle - call-on-claim       2.34    1.48     3.35             34             0
-  val 0.10      DP planner - no-price       0.15    0.00     0.40              2             0
-  val 0.10 DP planner - call-on-claim      -1.13   -2.44     0.00              7             9
-  val 0.10   no-price - call-on-claim      -1.28   -2.56    -0.17              7             9
-  val 0.10     oracle - call-on-claim       3.79    2.37     5.43             34             0
-  val 0.20      DP planner - no-price       0.00    0.00     0.00              0             0
-  val 0.20 DP planner - call-on-claim      -1.17   -2.44    -0.10              7             9
-  val 0.20   no-price - call-on-claim      -1.17   -2.44    -0.10              7             9
-  val 0.20     oracle - call-on-claim       4.93    3.09     7.02             34             0
- test 0.05      DP planner - no-price       1.00    0.01     2.42              9             3
- test 0.05 DP planner - call-on-claim      -0.74   -1.62    -0.07              3             7
- test 0.05   no-price - call-on-claim      -1.74   -3.77    -0.31              5             9
- test 0.05     oracle - call-on-claim       2.65    1.60     3.90             32             0
- test 0.10      DP planner - no-price       0.34    0.00     0.97              2             0
- test 0.10 DP planner - call-on-claim      -1.49   -3.53    -0.15              5             9
- test 0.10   no-price - call-on-claim      -1.82   -3.90    -0.38              4            10
- test 0.10     oracle - call-on-claim       3.75    2.41     5.23             35             0
- test 0.20      DP planner - no-price       0.00    0.00     0.00              0             0
- test 0.20 DP planner - call-on-claim      -2.34   -6.00    -0.17              5             9
- test 0.20   no-price - call-on-claim      -2.34   -6.00    -0.17              5             9
- test 0.20     oracle - call-on-claim       4.15    2.83     5.62             35             0
+  val 0.05      DP planner - no-price       0.34   -0.13     0.93              6             8
+  val 0.05 DP planner - call-on-claim      -0.39   -1.72     0.46              9             5
+  val 0.05   no-price - call-on-claim      -0.73   -2.13     0.28             12             8
+  val 0.05     oracle - call-on-claim       2.13    1.22     3.23             33             0
+  val 0.10      DP planner - no-price       0.21   -0.23     0.76              3             3
+  val 0.10 DP planner - call-on-claim       0.50   -0.38     1.55             11             7
+  val 0.10   no-price - call-on-claim       0.29   -0.55     1.12             13             6
+  val 0.10     oracle - call-on-claim       3.65    2.01     5.51             33             0
+  val 0.20      DP planner - no-price      -0.04   -0.10     0.00              0             2
+  val 0.20 DP planner - call-on-claim      -0.39   -1.40     0.50             10             8
+  val 0.20   no-price - call-on-claim      -0.35   -1.38     0.54             10             8
+  val 0.20     oracle - call-on-claim       4.74    2.68     7.07             34             0
+ test 0.05      DP planner - no-price       1.24    0.22     2.48              8             8
+ test 0.05 DP planner - call-on-claim      -0.11   -0.34     0.09              4             5
+ test 0.05   no-price - call-on-claim      -1.35   -2.64    -0.28             11            10
+ test 0.05     oracle - call-on-claim       1.99    1.25     2.84             32             0
+ test 0.10      DP planner - no-price       0.35   -0.60     1.39              4             5
+ test 0.10 DP planner - call-on-claim      -0.96   -2.39     0.01             11             8
+ test 0.10   no-price - call-on-claim      -1.31   -2.48    -0.33             12            10
+ test 0.10     oracle - call-on-claim       2.69    1.80     3.66             35             0
+ test 0.20      DP planner - no-price      -0.01   -0.04     0.00              0             1
+ test 0.20 DP planner - call-on-claim      -3.21   -8.82    -0.07             12            10
+ test 0.20   no-price - call-on-claim      -3.20   -8.81    -0.06             12            10
+ test 0.20     oracle - call-on-claim       3.17    2.21     4.24             35             0
 
 wrote results.csv, paired.csv and figures/call_price.png to C:\Users\super\Documents\GitHub\CVS-gates-for-sequential-decisions-in-laparoscopic-surgery-\outputs
