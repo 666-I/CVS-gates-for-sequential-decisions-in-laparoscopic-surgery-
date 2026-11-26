@@ -1,14 +1,26 @@
 """Reward model (supervised) and the 10-bin gain distribution. CPU only.
 
-    python src/04_reward_model.py
+    python src/04_reward_model.py [--model split] [--features compact] [--splits val]
 
 The reward model predicts the gain from calling AdaptNet on a frame (score_a - score_r, before the
-0.5 fee) from the state features in common.FEATURE_COLS. It is a gradient-boosted regressor with
-squared error, so it predicts the expected gain, which is what the policy compares with the price.
+0.5 fee) from state features, so it predicts the expected gain, which is what the policy compares
+with the price. The models and feature sets are in reward_models.py. The default was chosen on val
+(docs/results/next_fixes/reward_models_val.csv and reward_models_lovo_val.csv) by this rule:
+the model must use ResNet's output (the router's state is built from it, and step 5 asked for the
+claim and miss risk features); a variant is out if its val DP planner has more than 3 extra false CVS
+or is clearly worse than the old model; then the best mean claim-frame correlation over 5 fold
+seeds wins, with ties (within one SD) going to the simpler model.
+  split + compact  On frames where ResNet claims CVS: the chance that the claim is false (logistic
+                   regression on ResNet's p_cvs and r_min, position in the video and recent claims)
+                   times the mean gain of false claims, plus the rest times the mean gain of true
+                   claims. On other frames: the mean gain of that position bin.
+  split + slim scores a little higher but its classifier sees only position and recent claims, not
+  ResNet's confidence. The original model (200 boosted trees on the 8 raw features) is
+  --model gbr200 --features base. All variants lean on val video 161 (13 of the 38 claim frames).
 
 On val it is fitted five times with GroupKFold by video, so every val frame gets an out-of-fold
-prediction from a model that never saw its video. A final model fitted on all of val predicts test.
-Test is never used to fit anything.
+prediction from a model that never saw its video. A final model fitted on all of val predicts test
+(only with --splits val,test). Test is never used to fit anything.
 
 Writes:
   outputs/reward_preds.csv  prepped.csv plus dhat (out-of-fold on val, final model on test)
@@ -18,15 +30,10 @@ import argparse
 
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.model_selection import GroupKFold
 
 import common as c
-
-
-def make_model():
-    return GradientBoostingRegressor(n_estimators=200, max_depth=3, learning_rate=0.05,
-                                     subsample=0.8, min_samples_leaf=20, random_state=0)
+import reward_models as rm
 
 
 def report(name, part):
@@ -46,29 +53,37 @@ def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--splits", default="val",
                    help="val, or val,test to also predict test with the final model (final run only)")
-    splits = c.parse_splits(p.parse_args().splits)
+    p.add_argument("--model", default="split", choices=rm.MODELS, help="reward model (default split)")
+    p.add_argument("--features", default="compact", choices=list(rm.FEATURE_SETS),
+                   help="feature set from reward_models.py (default compact)")
+    args = p.parse_args()
+    splits = c.parse_splits(args.splits)
     df = pd.read_csv(c.OUTPUTS_DIR / "prepped.csv")
-    val = df[df.split == "val"].reset_index(drop=True)
-    test = df[df.split == "test"].reset_index(drop=True)
+    prepped_cols = list(df.columns)
+    val = rm.add_risk_features(df[df.split == "val"].reset_index(drop=True))
+    test = rm.add_risk_features(df[df.split == "test"].reset_index(drop=True))
+    print(f"reward model: {args.model}, features: {args.features}")
 
     oof = np.zeros(len(val))
     for k, (fit, held) in enumerate(GroupKFold(c.N_FOLDS).split(val, groups=val["video"])):
-        model = make_model().fit(val.loc[fit, c.FEATURE_COLS], val.loc[fit, "gain"])
-        oof[held] = model.predict(val.loc[held, c.FEATURE_COLS])
         assert not set(val.loc[fit, "video"]) & set(val.loc[held, "video"])
+        model = rm.make_model(args.model, args.features).fit(val.iloc[fit])
+        oof[held] = model.predict(val.iloc[held])
     val["dhat"] = oof
 
-    final = make_model().fit(val[c.FEATURE_COLS], val["gain"])
+    final = rm.make_model(args.model, args.features).fit(val)
     report("val (out-of-fold)", val)
     if "test" in splits:
-        test["dhat"] = final.predict(test[c.FEATURE_COLS])
+        test["dhat"] = final.predict(test)
         report("test (final model)", test)
     else:
         test = test.iloc[:0]
-    print("feature importance: " + ", ".join(
-        f"{n} {w:.2f}" for n, w in sorted(zip(c.FEATURE_COLS, final.feature_importances_), key=lambda x: -x[1])))
+    weights = final.importances()
+    if weights:
+        print("feature importance or coefficient (final model): " + ", ".join(
+            f"{n} {w:.2f}" for n, w in sorted(weights.items(), key=lambda x: -abs(x[1]))))
 
-    pd.concat([val, test]).to_csv(c.OUTPUTS_DIR / "reward_preds.csv", index=False)
+    pd.concat([val, test])[prepped_cols + ["dhat"]].to_csv(c.OUTPUTS_DIR / "reward_preds.csv", index=False)
     dist = {f"bin_{b}": val.loc[val["bin"] == b, "dhat"].to_numpy() for b in range(c.N_BINS)}
     np.savez(c.OUTPUTS_DIR / "gain_dist.npz", **dist)
     print("gain distribution (out-of-fold dhat on val) per bin: frames / mean / share above 0.5")

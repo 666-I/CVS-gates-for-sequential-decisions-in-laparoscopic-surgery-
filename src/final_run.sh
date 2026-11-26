@@ -5,6 +5,7 @@
 #
 #   src/final_run.sh main outputs/preds.csv
 #   src/final_run.sh v1b_e1 outputs/cheap/v1b_e1/preds.csv
+#   ARGS04="--model gbr200 --features base" src/final_run.sh main_gbr200 outputs/preds.csv
 set -e
 cd "$(dirname "$0")/.."
 PY=${PY:-.venv/bin/python}
@@ -16,6 +17,6 @@ cp "$preds" $CVS_OUTPUTS_DIR/preds.csv
 {
   $PY src/02_prep.py --splits val,test
   $PY src/03_baselines.py --splits val,test
-  $PY src/04_reward_model.py --splits val,test
+  $PY src/04_reward_model.py --splits val,test ${=ARGS04}
   $PY src/05_dp_planner.py --splits val,test
 } 2>&1 | tee $CVS_OUTPUTS_DIR/log.txt
