@@ -83,7 +83,6 @@ src/
   00_train_resnet.py    # GPU
   00b_train_adaptnet.py # GPU
   01_predict.py         # GPU -> outputs/preds.csv
-  01b_extract_features.py # GPU -> outputs/features_v1.npz (AdaptNet embeddings for the optional CVS layer)
   02_prep.py            # gains + state features
   03_baselines.py       # headroom check + oracle
   04_reward_model.py    # 5-fold reward model + gain distribution
@@ -128,14 +127,17 @@ DP planner - no-price on test, 95% CI over videos, for the four combinations of 
 - Step 1 (lambda 0, 3, 5, 7 on val): lambda raises the oracle headroom but barely changes missed CVS (145 to 149 of 170), because AdaptNet rarely claims CVS. Step 2 (penalty 5/10/20, fee 0.25/0.5/1.0): with gbr200 the price helps only when the budget binds (high penalty, low fee); with split, never.
 - Step 3 (`cvs_metrics.csv`): CVS-level AP (product score) val ResNet 0.43 vs AdaptNet 0.35, test ResNet 0.19 vs AdaptNet 0.28. Both have recall under 15% at the cut-offs in use.
 
-### CVS layer (added after the final run, so post-hoc)
-Added from `main` (Uzy's PC work) after the next-fixes final run. Nothing here was used to choose the main setup.
-- What it is: `src/01b_extract_features.py` saves AdaptNet v1's image embeddings; `02_prep.py --cvs-head` fits a logistic regression (C = 0.3) on them that predicts CVS directly, on the 108 fit train videos, with its threshold (0.388) chosen on the 12 held-out train videos. Val and test are not used. If it says CVS, AdaptNet answers yes on all three criteria; if it says no but the cut-offs all say yes, the criterion closest to its cut-off is set to no. Its probability is the column `a_p_cvs` (`p_cvs` stays ResNet's r1*r2*r3).
-- AdaptNet alone: CVS average precision 0.39 vs 0.35 on val, 0.34 vs 0.28 on test. On val, calls fix 9 ResNet misses and break 14 correct CVS calls (6 and 24 without it).
-- In the router, val, lambda 5 (`docs/results/cvs_layer/val.csv`): no gain. With `split compact` the planner still equals no-price (budget never binds). With `gbr200`, DP - no-price is +0.35 vs +0.37 at rho 0.05 and +0.17 vs -0.20 at rho 0.1, every interval includes 0. By the next-fixes rule (val decides), it is not adopted.
-- Test, post-hoc and for the record only (`docs/results/cvs_layer/test_posthoc.csv`): `split compact` 0.00 with or without it; with it, DP - call-on-claim improves from -1.20 / -2.64 to -0.57 / -2.01 at rho 0.05 / 0.1 (17 false CVS instead of 19). `gbr200`: +0.38 [-0.41, 1.31] / +0.38 [-0.01, 1.02] with it, +0.64 [-0.11, 1.55] / +0.42 [-0.34, 1.38] without.
-- Reproducibility note: these runs use the PC's predictions (fp16). The PC version of `main_gbr200` gives DP - no-price +0.64 [-0.11, 1.55] / +0.42 [-0.34, 1.38] on test, against the Mac's +1.15 [0.34, 2.16] / +0.57 [0.04, 1.41]: the same direction, but on the PC the intervals include 0. One val claim differs between the machines, which changes the gain distribution. The headline should say the effect holds in direction on both machines and is significant on the Mac only, or quote both.
-- `docs/results/pc_cvs_layer/`: the earlier exploratory PC run (lambda 3 + CVS layer + gbr200, all eight lambda/layer combinations). Lambda 3 was picked after seeing test, so it is exploratory only.
+### CVS layer (tried after the final run, dropped)
+Tried from `main` (Uzy's PC work) after the next-fixes final run, then dropped. Nothing here was used to choose the main setup. The code is not in the repo any more; it is in git history (`src/01b_extract_features.py` and `02_prep.py --cvs-head` in commit 370d34c on this branch, and on `main`). Results stay in `docs/results/cvs_layer/` (full precision) and `docs/results/pc_cvs_layer/` (earlier exploratory run).
+- What it was: a logistic regression (C = 0.3) on AdaptNet v1's image embeddings that predicts CVS directly, fitted on the 108 fit train videos, threshold (0.388) chosen on the 12 held-out train videos. If it said CVS, AdaptNet answered yes on all three criteria; if it said no but the cut-offs all said yes, the criterion closest to its cut-off was set to no.
+- Checks: it used train only (scrambling val and test labels left its outputs and threshold identical; scrambling train labels changed them), its rows and labels lined up with preds.csv, and reruns were identical.
+- As a CVS classifier it beat AdaptNet's own scores: CVS AP 0.395 vs 0.346 on val, 0.337 vs 0.284 on test (AUC 0.818 vs 0.809 on test); not sensitive to C (0.1 to 1.0). Its CVS claims were more precise (val 0.62 vs 0.33) but recall stayed low on test (0.05; every model is under 0.15). On val, calls fixed 9 ResNet misses and broke 14 correct CVS calls (6 and 24 without it).
+- In the router (lambda 5, full precision): no gain on val, so not adopted by the next-fixes rule. With `split compact` the planner still equals no-price; with `gbr200`, DP - no-price on val was +0.28 vs +0.51 at rho 0.05 and +0.06 vs -0.34 at rho 0.1 (all intervals include 0). On test, for the record only: with `gbr200` it weakened the price effect (+0.39 [-0.38, 1.35] / +0.34 [0.00, 0.95] with it, +1.15 / +0.57 without); with `split compact` it narrowed DP - call-on-claim (-0.57 / -2.01 vs -1.18 / -2.61, 17 false CVS instead of 19).
+- Earlier exploratory PC run (`docs/results/pc_cvs_layer/`, lambda 3 + layer + gbr200): DP - no-price +0.82 [0.03, 1.80] / +0.69 [0.06, 1.56] on test, but lambda 3 was picked after seeing test, so it is exploratory only.
+
+### Full precision
+- `01_predict.py` now predicts in full precision (float32, TF32 off) by default; `--mixed` gives the old behaviour. With that, the PC reproduces every declared next-fixes test result exactly (`outputs/final_pc/`: `main_v1`, `main_gbr200`, `main_lambda0`, `pc_repro`).
+- With the PC's old mixed-precision predictions, one val claim differed (39 vs 38) and `main_gbr200` came out at +0.64 [-0.11, 1.55] / +0.42 [-0.34, 1.38] on test instead of +1.15 [0.34, 2.16] / +0.57 [0.04, 1.41]: same direction, intervals including 0. The effect is real in direction but small enough for one frame to matter; say so in the report.
 
 ### PC run: main setup (agreed with the group)
 - Cheap model: ResNet18 v1, cut at 0.5 (trained with BCE, so 0.5 is meaningful).
