@@ -12,7 +12,7 @@ import common as c
 
 OUT = c.ROOT / "docs" / "results" / "next_fixes"
 # Every setup declared in final_run_plan.md (main_v1 or main_v3, whichever the v3 rule chose).
-DECLARED = ["main_gbr200", "main_split_slim", "main_extra_claims", "main_lambda0", "pc_repro",
+DECLARED = ["adapt_v3", "main_gbr200", "main_split_slim", "main_extra_claims", "main_lambda0", "pc_repro",
             "cheap_v1b_e1", "cheap_v1b_e3", "cheap_r112"]
 
 
