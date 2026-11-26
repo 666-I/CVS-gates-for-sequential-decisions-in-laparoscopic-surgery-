@@ -27,3 +27,6 @@ Everything below was fixed on val (or on the train holdout) before test was touc
 
 ## Note on the cheap-model sweep (val, added before test)
 The checkpoints chosen as weaker on the 12-video train holdout are not weaker on val by mAP (v1 0.396, v1b_e1 0.406, v1b_e3 0.420, r112 0.323). They differ in how often they claim CVS: v1b_e1 makes 75 val claims (36 false) against v1's 38 (13 false). So the sweep is read against claim behaviour (false claims), with mAP reported alongside. This is one more sign that the 12-video holdout cannot rank models.
+
+## Step 6 outcome (val, added before test)
+The 5 fold ResNets (fixed 8 epochs) give 70 claim frames on train (1.0% of frames), 69% of them false, against 38 claims on val (1.6%), 34% false. The rule above says not to use them: the false-claim rates differ by 35 points, although the val claim-frame correlation improves by more than one SD (0.436 +- 0.052 to 0.501 +- 0.032; AUC 0.83 to 0.86). The train rate is much closer to test's than val's is, which suggests val's claims are unusually often true. Added as a declared secondary run: `main_extra_claims`, `ARGS04="--extra-claims"`. The main setup does not use them.

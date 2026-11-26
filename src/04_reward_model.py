@@ -56,8 +56,13 @@ def main():
     p.add_argument("--model", default="split", choices=rm.MODELS, help="reward model (default split)")
     p.add_argument("--features", default="compact", choices=list(rm.FEATURE_SETS),
                    help="feature set from reward_models.py (default compact)")
+    p.add_argument("--extra-claims", action="store_true",
+                   help="also train the claim classifier on out-of-fold train claim frames (step 6, split only)")
     args = p.parse_args()
     splits = c.parse_splits(args.splits)
+    extra = rm.train_oof_claims() if args.extra_claims else None
+    if extra is not None:
+        print(f"extra train claim frames: {len(extra)} ({extra['false'].mean():.0%} false)")
     df = pd.read_csv(c.OUTPUTS_DIR / "prepped.csv")
     prepped_cols = list(df.columns)
     val = rm.add_risk_features(df[df.split == "val"].reset_index(drop=True))
@@ -67,11 +72,11 @@ def main():
     oof = np.zeros(len(val))
     for k, (fit, held) in enumerate(GroupKFold(c.N_FOLDS).split(val, groups=val["video"])):
         assert not set(val.loc[fit, "video"]) & set(val.loc[held, "video"])
-        model = rm.make_model(args.model, args.features).fit(val.iloc[fit])
+        model = rm.make_model(args.model, args.features, extra).fit(val.iloc[fit])
         oof[held] = model.predict(val.iloc[held])
     val["dhat"] = oof
 
-    final = rm.make_model(args.model, args.features).fit(val)
+    final = rm.make_model(args.model, args.features, extra).fit(val)
     report("val (out-of-fold)", val)
     if "test" in splits:
         test["dhat"] = final.predict(test)
