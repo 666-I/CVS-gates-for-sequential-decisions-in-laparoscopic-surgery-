@@ -1,0 +1,5 @@
+split,model,frames,random,claims,true_claims,false_claims,real_cvs,missed_cvs,precision,recall,f1,AP product,AP min,AP min margin
+val,ResNet18,2331,0.0729,38,25,13,170,145,0.6579,0.1471,0.2404,0.4247,0.3579,
+val,AdaptNet,2331,0.0729,15,5,10,170,165,0.3333,0.0294,0.0541,0.3460,0.3222,0.2998
+test,ResNet18,1799,0.0756,33,6,27,136,130,0.1818,0.0441,0.0710,0.1861,0.1569,
+test,AdaptNet,1799,0.0756,18,10,8,136,126,0.5556,0.0735,0.1299,0.2843,0.2831,0.3305
