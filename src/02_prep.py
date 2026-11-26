@@ -22,6 +22,16 @@ way. ResNet's cut-offs also define its CVS claims, so they change the state feat
 call-on-claim baseline too. --no-calibrate uses 0.5 for AdaptNet.
 Writes outputs/thresholds.csv.
 
+--cvs-head (off by default) adds a CVS layer on top of AdaptNet: a logistic regression on AdaptNet's image
+embeddings (from src/01b_extract_features.py) that predicts CVS directly. It is fitted on the 108
+fit videos of train; its yes/no threshold is the one that gives AdaptNet the best mean score on the
+12 held-out train videos (under the current reward, lambda included). Val and test are not used.
+If it says CVS, AdaptNet answers yes on all three criteria; if it says no but the three cut-offs
+all say yes, the criterion closest to its cut-off is set to no; otherwise the cut-offs decide.
+
+Run src/01b_extract_features.py first: the CVS layer needs its outputs/features_v1.npz. Its CVS
+probability is written as a_p_cvs (not p_cvs, which reward_models.py uses for ResNet's r1*r2*r3).
+
 Calls left is part of the planner's state (the b in V(t, b)), not a reward-model feature:
 the gain from calling on a frame does not depend on how many calls remain.
 """
@@ -29,6 +39,7 @@ import argparse
 
 import numpy as np
 import pandas as pd
+from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import GroupKFold
 
 import common as c
@@ -64,9 +75,47 @@ def cutoffs(df, cols, calibrate):
     return thr, pd.DataFrame(rows)
 
 
+HEAD_C = 0.3  # regularisation of the CVS layer, chosen on the held-out train videos (CVS average precision)
+
+
+def combine(a_probs, cut, p_cvs, t):
+    """AdaptNet's 0/1 answers from its cut-offs, overruled on CVS by the CVS layer."""
+    pred = (a_probs >= cut).astype(int)
+    yes = p_cvs >= t
+    pred[yes] = 1
+    clash = pred.all(1) & ~yes
+    if clash.any():
+        rows = np.flatnonzero(clash)
+        pred[rows, np.argmin((a_probs - cut)[clash], axis=1)] = 0
+    return pred
+
+
+def cvs_head(df, cut_test, path):
+    """Per-frame CVS probability from the CVS layer, and the threshold chosen on held-out train videos."""
+    f = np.load(path)
+    held = f["train_holdout"].astype(bool)
+    head = LogisticRegression(C=HEAD_C, max_iter=3000)
+    head.fit(f["train_emb"][~held].astype(np.float32), f["train_y"][~held].all(1))
+    p_held = head.predict_proba(f["train_emb"][held].astype(np.float32))[:, 1]
+    grid = np.unique(np.quantile(p_held, np.linspace(0.5, 1, 201)))
+    y_held = f["train_y"][held]
+    t = max(grid, key=lambda g: c.score(combine(f["train_posneg"][held], cut_test, p_held, g), y_held).mean())
+    keys = []
+    for split in ("val", "test"):
+        keys.append(pd.DataFrame({"split": split, "video": f[f"{split}_video"], "frame_idx": f[f"{split}_frame"],
+                                  "p_cvs": head.predict_proba(f[f"{split}_emb"].astype(np.float32))[:, 1]}))
+    p = df[["split", "video", "frame_idx"]].merge(pd.concat(keys), how="left", on=["split", "video", "frame_idx"])
+    if p["p_cvs"].isna().any():
+        raise ValueError(f"{path} does not cover every frame in preds.csv; rerun 01b_extract_features.py")
+    return p["p_cvs"].to_numpy(), float(t)
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--no-calibrate", action="store_true", help="use 0.5 for AdaptNet, as in the first runs")
+    p.add_argument("--cvs-head", action="store_true", help="overrule AdaptNet's CVS claims with the CVS layer")
+    p.add_argument("--features", default=str(c.ROOT / "outputs" / "features_v1.npz"),
+                   help="AdaptNet embeddings from 01b_extract_features.py, for the CVS layer")
     p.add_argument("--calibrate-resnet", action="store_true",
                    help="also choose ResNet's cut-offs on val, the same way as AdaptNet's")
     p.add_argument("--splits", default="val", help="splits to print summaries for (all rows are always written)")
@@ -85,7 +134,13 @@ def main():
     df[["a_thr1", "a_thr2", "a_thr3"]] = a_thr
     df[["r_thr1", "r_thr2", "r_thr3"]] = r_thr
     df[["ry1", "ry2", "ry3"]] = (df[c.R_COLS].to_numpy() >= r_thr).astype(int)
-    df[["ay1", "ay2", "ay3"]] = (df[c.A_COLS].to_numpy() >= a_thr).astype(int)
+    if args.cvs_head:
+        cut_test = a_thr[np.flatnonzero(df["split"] == "test")[0]]
+        df["a_p_cvs"], t = cvs_head(df, cut_test, args.features)
+        df[["ay1", "ay2", "ay3"]] = combine(df[c.A_COLS].to_numpy(), a_thr, df["a_p_cvs"].to_numpy(), t)
+        print(f"CVS layer on: threshold {t:.3f}, chosen on held-out train videos")
+    else:
+        df[["ay1", "ay2", "ay3"]] = (df[c.A_COLS].to_numpy() >= a_thr).astype(int)
     df["score_r"] = c.score(df[["ry1", "ry2", "ry3"]].to_numpy(), y)
     df["score_a"] = c.score(df[["ay1", "ay2", "ay3"]].to_numpy(), y)
     df["gain"] = df["score_a"] - df["score_r"]
@@ -113,6 +168,7 @@ def main():
         a_claims = c.is_cvs(a_pred)
         print(f"\n{split}: AdaptNet with these cut-offs: accuracy {(a_pred == truth).mean():.3f}, "
               f"CVS claims {a_claims.sum()} ({(a_claims & ~c.is_cvs(truth)).sum()} false), "
+              f"misses {(~a_claims & c.is_cvs(truth)).sum()} of {c.is_cvs(truth).sum()} CVS frames, "
               f"mean score {part['score_a'].mean():.3f} (ResNet {part['score_r'].mean():.3f})")
         r_pred = part[["ry1", "ry2", "ry3"]].to_numpy()
         print(f"{split}: ResNet18 with these cut-offs: accuracy {(r_pred == truth).mean():.3f}, "
